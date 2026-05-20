@@ -20,7 +20,7 @@
 
 ---
 
-## ⚡ Quick Features
+## Quick Features
 
 - **On-Device Acoustic Processing**: Convert voice to text in real-time with zero backend database pings or network trackers.
 - **Pre-Recorded Audio Decimator**: Import standard `.wav` or `.mp3` audio tracks and decode them on local background workers.
@@ -29,7 +29,7 @@
 
 ---
 
-## 🛠️ Modern Enterprise Tech Stack
+## Modern Enterprise Tech Stack
 
 - **UI Layer**: Jetpack Compose (Declarative UI layout, StateFlow state hoisting).
 - **Core Architecture**: MVVM (Model-View-ViewModel) + Clean Architecture data flowing with unidirectional models.
@@ -39,7 +39,7 @@
 
 ---
 
-## 📂 Project Archive Layout
+## Project Archive Layout
 
 ```
 ├── app/
@@ -59,7 +59,7 @@
 
 ---
 
-## 🚀 How To Deploy to Production
+## How To Deploy to Production
 
 ### 1. Download Model Assets
 1. Visit the [Vosk Models Hub](https://alphacephei.com/vosk/models).
@@ -75,7 +75,7 @@ Compile and deploy the binary directly to your physical testing device:
 
 ---
 
-## 📦 Conventional Git Workspace Commits Roster
+## Conventional Git Workspace Commits Roster
 
 As part of strict graduate architectural presentation, we have provided a clean, step-by-step checklist to commit and push all files individually using **one-line, conventional, all lowercase** commit formatting.
 
@@ -94,15 +94,15 @@ git add app/src/main/AndroidManifest.xml
 git commit -m "feat: declare record audio and local storage permissions"
 
 # 4. Commit offline vosk engine utility handler
-git add app/src/main/java/com/meTranscriber/domain/OfflineTranscriber.kt
+git add app/src/main/java/com/metranscriber/app/domain/OfflineTranscriber.kt
 git commit -m "feat: implement on-device stt processor using offline vosk engine"
 
 # 5. Commit jetpack compose dynamic UI views
-git add app/src/main/java/com/meTranscriber/ui/screen/TranscriberScreen.kt
+git add app/src/main/java/com/metranscriber/app/ui/screen/TranscriberScreen.kt
 git commit -m "feat: design declarative transcriber screen layout in compose"
 
 # 6. Commit database transaction models
-git add app/src/main/java/com/meTranscriber/data/db/TranscribeDao.kt
+git add app/src/main/java/com/metranscriber/app/data/db/TranscribeDao.kt
 git commit -m "feat: establish room sqlite dao for structured keyword search"
 
 # 7. Commit modern github presentation layout
