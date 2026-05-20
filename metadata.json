@@ -1,0 +1,6 @@
+{
+  "name": "Offline Audio Transcriber",
+  "description": "An offline-first speech-to-text recording utility with a companion Android-focused CV enhancer and interactive Kotlin architecture generator.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

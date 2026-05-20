@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1a1a1a;
+  --color-paper: #f8f7f3;
+  --color-editorial-blue: #2d5bff;
+  --font-serif: "Georgia", Cambria, "Times New Roman", Times, serif;
+}
+
+body {
+  background-color: #f8f7f3;
+  color: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.dot-matrix {
+  background-image: radial-gradient(#1a1a1a 1px, transparent 1px);
+  background-size: 16px 16px;
+  opacity: 0.04;
+}
