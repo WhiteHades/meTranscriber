@@ -2,36 +2,44 @@ package com.metranscriber.app.data.repository
 
 import com.metranscriber.app.domain.model.TranscriptSegment
 import com.metranscriber.app.domain.model.TranscriptionSession
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 class FakeTranscriptionRepository : TranscriptionRepository {
-  private val sessions = mutableMapOf<String, TranscriptionSession>()
-  private val segments = mutableMapOf<String, MutableList<TranscriptSegment>>()
+    private val _sessions = MutableStateFlow<Map<String, TranscriptionSession>>(emptyMap())
+    private val _segments = MutableStateFlow<Map<String, List<TranscriptSegment>>>(emptyMap())
 
-  override suspend fun saveSession(session: TranscriptionSession) {
-    sessions[session.id] = session
-  }
+    override suspend fun saveSession(session: TranscriptionSession) {
+        _sessions.value = _sessions.value + (session.id to session)
+    }
 
-  override suspend fun getSessions(): List<TranscriptionSession> {
-    return sessions.values.toList().sortedByDescending { it.createdAt }
-  }
+    override fun getSessions(): Flow<List<TranscriptionSession>> {
+        return _sessions.map { it.values.toList().sortedByDescending { it.createdAt } }
+    }
 
-  override suspend fun getSessionById(id: String): TranscriptionSession? {
-    return sessions[id]
-  }
+    override suspend fun getSessionById(id: String): TranscriptionSession? {
+        return _sessions.value[id]
+    }
 
-  override suspend fun deleteSession(id: String) {
-    sessions.remove(id)
-    segments.remove(id)
-  }
+    override suspend fun deleteSession(id: String) {
+        _sessions.value = _sessions.value - id
+        _segments.value = _segments.value - id
+    }
 
-  override suspend fun saveSegments(segments: List<TranscriptSegment>) {
-    if (segments.isEmpty()) return
-    val sessionId = segments[0].sessionId
-    val list = this.segments.getOrPut(sessionId) { mutableListOf() }
-    list.addAll(segments)
-  }
+    override suspend fun saveSegments(segments: List<TranscriptSegment>) {
+        if (segments.isEmpty()) return
+        val sessionId = segments[0].sessionId
+        val currentSegments = _segments.value[sessionId] ?: emptyList()
+        _segments.value = _segments.value + (sessionId to (currentSegments + segments))
+    }
 
-  override suspend fun getSegmentsForSession(sessionId: String): List<TranscriptSegment> {
-    return segments[sessionId] ?: emptyList()
-  }
+    override fun getSegmentsForSession(sessionId: String): Flow<List<TranscriptSegment>> {
+        return _segments.map { it[sessionId] ?: emptyList() }
+    }
+
+    override suspend fun saveFullTranscription(session: TranscriptionSession, segments: List<TranscriptSegment>) {
+        saveSession(session)
+        saveSegments(segments)
+    }
 }

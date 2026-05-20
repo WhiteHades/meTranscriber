@@ -2,6 +2,7 @@ package com.metranscriber.app.data.repository
 
 import com.metranscriber.app.domain.model.TranscriptSegment
 import com.metranscriber.app.domain.model.TranscriptionSession
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -27,7 +28,7 @@ class TranscriptionRepositoryTest {
     )
 
     repository.saveSession(session)
-    val sessions = repository.getSessions()
+    val sessions = repository.getSessions().first()
     assertEquals(1, sessions.size)
     assertEquals("Meeting 1", sessions[0].title)
 
@@ -55,7 +56,7 @@ class TranscriptionRepositoryTest {
     repository.saveSession(session)
     repository.deleteSession("session_1")
     
-    val sessions = repository.getSessions()
+    val sessions = repository.getSessions().first()
     assertEquals(0, sessions.size)
     
     val fetched = repository.getSessionById("session_1")
