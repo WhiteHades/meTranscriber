@@ -2,6 +2,7 @@ package com.metranscriber.app.engine
 
 import android.content.Context
 import com.metranscriber.app.domain.model.TranscriptSegment
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -18,7 +19,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class VoskTranscriberEngine(
-    private val context: Context,
+    context: Context,
     private val sessionId: String
 ) : TranscriberEngine {
 
@@ -31,50 +32,78 @@ class VoskTranscriberEngine(
 
     private var model: Model? = null
     private val json = Json { ignoreUnknownKeys = true }
+    private val appContext = context.applicationContext
 
     override suspend fun initialize() {
         if (model != null) return
         
         try {
             model = suspendCancellableCoroutine { continuation ->
-                StorageService.unpack(context, "model", "model",
+                StorageService.unpack(appContext, "model", "model",
                     { loadedModel ->
-                        isModelDownloaded = true
-                        continuation.resume(loadedModel)
+                        if (continuation.isActive) {
+                            try {
+                                isModelDownloaded = true
+                                continuation.resume(loadedModel)
+                            } catch (e: Exception) {
+                                isModelDownloaded = false
+                                try {
+                                    loadedModel.close()
+                                } catch (_: Exception) {}
+                            }
+                        } else {
+                            try {
+                                loadedModel.close()
+                            } catch (_: Exception) {}
+                        }
                     },
                     { exception ->
-                        continuation.resumeWithException(exception)
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(exception)
+                        }
                     }
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw IllegalStateException("Vosk model assets are missing. Add a model at app/src/main/assets/model.", e)
         }
     }
 
     override suspend fun release() {
-        // Vosk Model doesn't have a specific close() but we can null it
-        model = null
+        try {
+            model?.close()
+        } catch (_: Exception) {
+        } finally {
+            model = null
+            isModelDownloaded = false
+        }
     }
 
     override fun transcribeStream(audioFlow: Flow<ShortArray>): Flow<TranscriptSegment> = flow {
         val currentModel = model ?: throw IllegalStateException("Vosk Model not initialized")
         val recognizer = Recognizer(currentModel, 16000.0f)
         
-        audioFlow.collect { audioData ->
-            if (recognizer.acceptWaveForm(audioData, audioData.size)) {
-                val result = recognizer.result
-                parseVoskResult(result, false)?.let { emit(it) }
-            } else {
-                val partialResult = recognizer.partialResult
-                parseVoskResult(partialResult, true)?.let { emit(it) }
+        try {
+            audioFlow.collect { audioData ->
+                if (recognizer.acceptWaveForm(audioData, audioData.size)) {
+                    val result = recognizer.result
+                    parseVoskResult(result, false)?.let { emit(it) }
+                } else {
+                    val partialResult = recognizer.partialResult
+                    parseVoskResult(partialResult, true)?.let { emit(it) }
+                }
+            }
+
+            val finalResult = recognizer.finalResult
+            parseVoskResult(finalResult, false)?.let { emit(it) }
+        } finally {
+            try {
+                recognizer.close()
+            } catch (_: Exception) {
             }
         }
-        
-        // Final result
-        val finalResult = recognizer.finalResult
-        parseVoskResult(finalResult, false)?.let { emit(it) }
-        
     }.flowOn(Dispatchers.Default)
 
     private fun parseVoskResult(jsonString: String, isPartial: Boolean): TranscriptSegment? {

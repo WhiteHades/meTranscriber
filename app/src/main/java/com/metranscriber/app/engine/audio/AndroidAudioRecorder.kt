@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -37,12 +38,26 @@ class AndroidAudioRecorder : AudioRecorder {
     )
 
     if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+      audioRecord.release()
       close(IllegalStateException("failed to initialize audiorecord"))
       return@callbackFlow
     }
 
+    try {
+      audioRecord.startRecording()
+    } catch (e: Exception) {
+      audioRecord.release()
+      close(IllegalStateException("failed to start audiorecord", e))
+      return@callbackFlow
+    }
+
+    if (audioRecord.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+      audioRecord.release()
+      close(IllegalStateException("audiorecord did not start recording"))
+      return@callbackFlow
+    }
+
     isRecording = true
-    audioRecord.startRecording()
 
     val buffer = ShortArray(1024)
     val readJob = launch(Dispatchers.IO) {
@@ -52,12 +67,14 @@ class AndroidAudioRecorder : AudioRecorder {
           if (read > 0) {
             val chunk = ShortArray(read)
             System.arraycopy(buffer, 0, chunk, 0, read)
-            trySend(chunk)
+            send(chunk)
           } else if (read < 0) {
             close(IllegalStateException("audiorecord read error: $read"))
             break
           }
         }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         close(e)
       }
