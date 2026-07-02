@@ -129,6 +129,31 @@ class TranscriberViewModelTest {
   }
 
   @Test
+  fun stopRecording_whenNoSpeechDetected_reportsErrorAndDoesNotSaveSession() = runTest(testDispatcher) {
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder)
+
+    viewModel.startRecording()
+    testScheduler.advanceTimeBy(100)
+    viewModel.stopRecording()
+    testScheduler.advanceUntilIdle()
+
+    assertEquals("No speech detected", viewModel.recordingError.value)
+    assertEquals(0, repository.getSessions().first().size)
+  }
+
+  @Test
+  fun importWavFile_whenNoSpeechDetected_reportsErrorAndDoesNotSaveSession() = runTest(testDispatcher) {
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder)
+    val wav = WavAudioReaderTest.wavBytes(frames = ShortArray(1024) { 1000 })
+
+    viewModel.importWavFile("silent.wav", wav)
+    testScheduler.advanceUntilIdle()
+
+    assertEquals("No speech detected", viewModel.recordingError.value)
+    assertEquals(0, repository.getSessions().first().size)
+  }
+
+  @Test
   fun updateNotes_preservesLatestEditWhenWritesCompleteOutOfOrder() = runTest(testDispatcher) {
     val delayedRepository = DelayedNotesRepository()
     val session = testSession(notes = "initial")
@@ -228,6 +253,21 @@ class TranscriberViewModelTest {
     override fun transcribeStream(audioFlow: Flow<ShortArray>): Flow<TranscriptSegment> = flow {
       audioFlow.collect { }
       emit(TranscriptSegment("final", "session", 3000L, "final words", null, 1f, false))
+    }
+  }
+
+  private class SilentEngine : TranscriberEngine {
+    override val engineId: String = "silent"
+    override val displayName: String = "Silent"
+    override val isAvailable: Boolean = true
+    override val isModelDownloaded: Boolean = true
+
+    override suspend fun initialize() = Unit
+
+    override suspend fun release() = Unit
+
+    override fun transcribeStream(audioFlow: Flow<ShortArray>): Flow<TranscriptSegment> = flow {
+      audioFlow.collect { }
     }
   }
 

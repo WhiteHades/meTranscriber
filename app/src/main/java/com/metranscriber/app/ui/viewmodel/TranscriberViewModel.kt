@@ -141,7 +141,9 @@ class TranscriberViewModel(
         engine.transcribeStream(recordFlow).collect { segment ->
           _liveSegments.value = _liveSegments.value + segment
         }
-        saveRecordingSession(System.currentTimeMillis() - startTimeMs)
+        if (!saveRecordingSession(System.currentTimeMillis() - startTimeMs)) {
+          _recordingError.value = "No speech detected"
+        }
         resetRecordingUiState(cancelRecordingJob = false)
       } catch (e: CancellationException) {
         throw e
@@ -206,6 +208,8 @@ class TranscriberViewModel(
             segments = segmentsToSave
           )
           loadSessions()
+        } else {
+          _recordingError.value = "No speech detected"
         }
       } catch (e: CancellationException) {
         throw e
@@ -339,10 +343,10 @@ class TranscriberViewModel(
     return segments.lastOrNull { it.text.isNotBlank() }?.let { listOf(it) } ?: emptyList()
   }
 
-  private suspend fun saveRecordingSession(durationMs: Long) {
+  private suspend fun saveRecordingSession(durationMs: Long): Boolean {
     val segmentsToSave = segmentsForSavedSession()
     val text = segmentsToSave.joinToString(" ") { it.text }
-    if (text.isBlank()) return
+    if (text.isBlank()) return false
 
     val sessionId = UUID.randomUUID().toString()
     saveCompletedTranscription(
@@ -355,6 +359,7 @@ class TranscriberViewModel(
       segments = segmentsToSave
     )
     loadSessions()
+    return true
   }
 
   private suspend fun saveCompletedTranscription(
