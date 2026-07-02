@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.UUID
 import kotlin.math.abs
 
@@ -82,7 +85,9 @@ class TranscriberViewModel(
 
   private var recordingJob: Job? = null
   private var timerJob: Job? = null
+  private var selectedSessionJob: Job? = null
   private var startTimeMs = 0L
+  private val exportJson = Json { prettyPrint = true }
 
   init {
     loadSessions()
@@ -141,7 +146,8 @@ class TranscriberViewModel(
     recordingJob?.cancel()
     
     val duration = System.currentTimeMillis() - startTimeMs
-    val text = _liveSegments.value.joinToString(" ") { it.text }
+    val segmentsToSave = segmentsForSavedSession()
+    val text = segmentsToSave.joinToString(" ") { it.text }
     
     if (text.isNotBlank()) {
       viewModelScope.launch {
@@ -161,13 +167,15 @@ class TranscriberViewModel(
           notes = ""
         )
         
-        repository.saveSession(newSession)
-        
-        // Save segments mapped to this new session
-        val mappedSegments = _liveSegments.value.mapIndexed { idx, seg ->
-          seg.copy(id = UUID.randomUUID().toString(), sessionId = sessionId, timestampMs = idx * 2000L)
+        val mappedSegments = segmentsToSave.map { segment ->
+          segment.copy(
+            id = UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            timestampMs = normalizedTimestamp(segment.timestampMs),
+            isPartial = false
+          )
         }
-        repository.saveSegments(mappedSegments)
+        repository.saveFullTranscription(newSession, mappedSegments)
         
         loadSessions()
       }
@@ -224,10 +232,11 @@ class TranscriberViewModel(
   }
 
   fun selectSession(session: TranscriptionSession?) {
+    selectedSessionJob?.cancel()
     _selectedSession.value = session
     if (session != null) {
       _selectedSessionNotes.value = session.notes ?: ""
-      viewModelScope.launch {
+      selectedSessionJob = viewModelScope.launch {
         repository.getSegmentsForSession(session.id).collect {
           _selectedSessionSegments.value = it
         }
@@ -235,6 +244,7 @@ class TranscriberViewModel(
     } else {
       _selectedSessionSegments.value = emptyList()
       _selectedSessionNotes.value = ""
+      selectedSessionJob = null
     }
   }
 
@@ -261,34 +271,16 @@ class TranscriberViewModel(
   }
 
   fun exportSessionAsJson(session: TranscriptionSession, segments: List<TranscriptSegment>): String {
-    val sb = java.lang.StringBuilder()
-    sb.append("{\n")
-    sb.append("  \"id\": \"${session.id}\",\n")
-    sb.append("  \"title\": \"${session.title.escapeJson()}\",\n")
-    sb.append("  \"createdAt\": ${session.createdAt},\n")
-    sb.append("  \"durationMs\": ${session.durationMs},\n")
-    sb.append("  \"engineUsed\": \"${session.engineUsed}\",\n")
-    sb.append("  \"notes\": \"${(session.notes ?: "").escapeJson()}\",\n")
-    sb.append("  \"rawText\": \"${session.rawText.escapeJson()}\",\n")
-    sb.append("  \"segments\": [\n")
-    segments.forEachIndexed { index, segment ->
-      sb.append("    {\n")
-      sb.append("      \"timestampMs\": ${segment.timestampMs},\n")
-      sb.append("      \"text\": \"${segment.text.escapeJson()}\",\n")
-      sb.append("      \"speaker\": \"${(segment.speaker ?: "").escapeJson()}\",\n")
-      sb.append("      \"confidence\": ${segment.confidence}\n")
-      sb.append("    }${if (index < segments.size - 1) "," else ""}\n")
-    }
-    sb.append("  ]\n")
-    sb.append("}")
-    return sb.toString()
+    return exportJson.encodeToString(TranscriptionExport.from(session, segments))
   }
 
   fun exportSessionAsSrt(segments: List<TranscriptSegment>): String {
     val sb = java.lang.StringBuilder()
-    segments.forEachIndexed { index, segment ->
+    val exportSegments = segments.filter { it.text.isNotBlank() }.sortedBy { it.timestampMs }
+    exportSegments.forEachIndexed { index, segment ->
       val start = segment.timestampMs
-      val end = segment.timestampMs + 2000L
+      val nextStart = exportSegments.getOrNull(index + 1)?.timestampMs
+      val end = if (nextStart != null && nextStart > start) nextStart else start + 2000L
       sb.append("${index + 1}\n")
       sb.append("${formatSrtTime(start)} --> ${formatSrtTime(end)}\n")
       sb.append("${segment.text}\n\n")
@@ -304,8 +296,15 @@ class TranscriberViewModel(
     return String.format("%02d:%02d:%02d,%03d", hrs, mins, secs, millis)
   }
 
-  private fun String.escapeJson(): String {
-    return this.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+  private fun segmentsForSavedSession(): List<TranscriptSegment> {
+    val finalized = _liveSegments.value.filter { !it.isPartial && it.text.isNotBlank() }
+    if (finalized.isNotEmpty()) return finalized
+    return _liveSegments.value.lastOrNull { it.text.isNotBlank() }?.let { listOf(it) } ?: emptyList()
+  }
+
+  private fun normalizedTimestamp(timestampMs: Long): Long {
+    val relative = if (timestampMs >= startTimeMs) timestampMs - startTimeMs else timestampMs
+    return relative.coerceAtLeast(0L)
   }
 
   private fun <T> kotlinx.coroutines.flow.Flow<T>.stateInViewModel(initialValue: T): StateFlow<T> {
@@ -328,6 +327,38 @@ class TranscriberViewModel(
       val engineManager = EngineManager(listOf(VoskTranscriberEngine(context, UUID.randomUUID().toString())))
       val audioRecorder = AndroidAudioRecorder()
       return TranscriberViewModel(repository, engineManager, audioRecorder)
+    }
+  }
+
+  @Serializable
+  private data class TranscriptionExport(
+    val id: String,
+    val title: String,
+    val createdAt: Long,
+    val durationMs: Long,
+    val language: String,
+    val engineUsed: String,
+    val rawText: String,
+    val wordCount: Int,
+    val audioFilePath: String?,
+    val notes: String?,
+    val segments: List<TranscriptSegment>
+  ) {
+    companion object {
+      fun from(session: TranscriptionSession, segments: List<TranscriptSegment>): TranscriptionExport =
+        TranscriptionExport(
+          id = session.id,
+          title = session.title,
+          createdAt = session.createdAt,
+          durationMs = session.durationMs,
+          language = session.language,
+          engineUsed = session.engineUsed,
+          rawText = session.rawText,
+          wordCount = session.wordCount,
+          audioFilePath = session.audioFilePath,
+          notes = session.notes,
+          segments = segments
+        )
     }
   }
 }

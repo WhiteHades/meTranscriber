@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.metranscriber.app.data.db.AppDatabase
+import com.metranscriber.app.data.db.entities.TranscriptSegmentEntity
 import com.metranscriber.app.data.db.entities.TranscriptionEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -70,5 +71,37 @@ class TranscriptionDaoTest {
         dao.deleteSession("test_id")
         val sessions = dao.getAllSessions().first()
         assertEquals(0, sessions.size)
+    }
+
+    @Test
+    fun deleteSession_removesSegmentsByCascade() = runBlocking {
+        val session = TranscriptionEntity(
+            id = "test_id",
+            title = "Test Session",
+            createdAt = 123456789L,
+            durationMs = 5000L,
+            language = "en",
+            engineUsed = "vosk",
+            rawText = "hello world",
+            wordCount = 2,
+            audioFilePath = null,
+            notes = "test notes"
+        )
+        val segment = TranscriptSegmentEntity(
+            id = "segment_id",
+            sessionId = session.id,
+            timestampMs = 1000L,
+            text = "hello",
+            speaker = null,
+            confidence = 0.9f,
+            isPartial = false
+        )
+
+        dao.insertSession(session)
+        dao.insertSegments(listOf(segment))
+        dao.deleteSession(session.id)
+
+        val segments = dao.getSegmentsForSession(session.id).first()
+        assertEquals(0, segments.size)
     }
 }
