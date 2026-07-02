@@ -3,6 +3,7 @@ package com.metranscriber.app.engine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 
 class EngineManager(
   private val engines: List<TranscriberEngine>
@@ -20,9 +21,17 @@ class EngineManager(
     val engine = engines.firstOrNull { it.engineId == engineId } ?: return false
     if (!engine.isAvailable) return false
 
-    _activeEngine.value.release()
-    engine.initialize()
-    _activeEngine.value = engine
-    return true
+    return try {
+      engine.initialize()
+      if (engine !== _activeEngine.value) {
+        _activeEngine.value.release()
+        _activeEngine.value = engine
+      }
+      true
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      false
+    }
   }
 }

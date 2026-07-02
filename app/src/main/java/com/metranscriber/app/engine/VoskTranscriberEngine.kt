@@ -35,16 +35,20 @@ class VoskTranscriberEngine(
     override suspend fun initialize() {
         if (model != null) return
         
-        model = suspendCancellableCoroutine { continuation ->
-            StorageService.unpack(context, "model", "model",
-                { loadedModel ->
-                    isModelDownloaded = true
-                    continuation.resume(loadedModel)
-                },
-                { exception ->
-                    continuation.resumeWithException(exception)
-                }
-            )
+        try {
+            model = suspendCancellableCoroutine { continuation ->
+                StorageService.unpack(context, "model", "model",
+                    { loadedModel ->
+                        isModelDownloaded = true
+                        continuation.resume(loadedModel)
+                    },
+                    { exception ->
+                        continuation.resumeWithException(exception)
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("Vosk model assets are missing. Add a model at app/src/main/assets/model.", e)
         }
     }
 
