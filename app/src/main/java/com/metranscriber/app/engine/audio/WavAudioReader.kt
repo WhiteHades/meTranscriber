@@ -6,13 +6,14 @@ import kotlin.math.roundToInt
 object WavAudioReader {
   private const val TARGET_SAMPLE_RATE = 16000
   private const val CHUNK_SIZE = 1024
+  private const val MAX_AUDIO_DATA_BYTES = 25 * 1024 * 1024
 
   data class DecodedAudio(
     val chunks: List<ShortArray>,
     val durationMs: Long
   )
 
-  fun decode(bytes: ByteArray): DecodedAudio {
+  fun decode(bytes: ByteArray, maxAudioDataBytes: Int = MAX_AUDIO_DATA_BYTES): DecodedAudio {
     require(bytes.size >= 44) { "WAV file is too small" }
     require(bytes.ascii(0, 4) == "RIFF" && bytes.ascii(8, 4) == "WAVE") { "Only RIFF/WAVE files are supported" }
 
@@ -52,6 +53,7 @@ object WavAudioReader {
     require(sampleRate > 0) { "Invalid WAV sample rate" }
     require(bitsPerSample == 16) { "Only 16-bit WAV files are supported" }
     require(dataOffset >= 0 && dataSize > 0) { "WAV file has no audio data" }
+    require(dataSize <= maxAudioDataBytes) { "WAV audio data is too large. Choose a file under 25 MB." }
 
     val monoSamples = readMonoSamples(bytes, dataOffset, dataSize, channels)
     val durationMs = monoSamples.size * 1000L / sampleRate

@@ -28,6 +28,15 @@ class WavAudioReaderTest {
     }
   }
 
+  @Test
+  fun decode_rejectsAudioDataOverLimit() {
+    val wav = wavBytes(frames = ShortArray(64) { 100 })
+
+    assertThrows(IllegalArgumentException::class.java) {
+      WavAudioReader.decode(wav, maxAudioDataBytes = 32)
+    }
+  }
+
   companion object {
     fun wavBytes(sampleRate: Int = 16000, channels: Int = 1, frames: ShortArray): ByteArray {
       val dataSize = frames.size * channels * 2

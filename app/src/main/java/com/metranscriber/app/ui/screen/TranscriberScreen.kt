@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,9 +54,14 @@ import com.metranscriber.app.engine.TranscriberEngine
 import com.metranscriber.app.theme.*
 import com.metranscriber.app.ui.viewmodel.TranscriberViewModel
 import com.metranscriber.app.ui.viewmodel.RecordingState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+
+private const val MAX_WAV_IMPORT_BYTES = 25 * 1024 * 1024
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,13 +112,19 @@ fun TranscriberScreen(
     onResult = { uri ->
       if (uri == null) return@rememberLauncherForActivityResult
       scope.launch {
-        val bytes = withContext(Dispatchers.IO) {
-          context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }
-        if (bytes == null) {
-          snackbarHostState.showSnackbar("Could not read selected audio file")
-        } else {
-          viewModel.importWavFile(uri.lastPathSegment ?: "selected audio", bytes)
+        try {
+          val bytes = withContext(Dispatchers.IO) {
+            context.readSelectedAudioBytes(uri)
+          }
+          if (bytes == null) {
+            snackbarHostState.showSnackbar("Could not read selected audio file")
+          } else {
+            viewModel.importWavFile(uri.lastPathSegment ?: "selected audio", bytes)
+          }
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          snackbarHostState.showSnackbar(e.message ?: "Could not read selected audio file")
         }
       }
     }
@@ -251,6 +263,23 @@ fun TranscriberScreen(
       }
     }
   }
+}
+
+private fun Context.readSelectedAudioBytes(uri: Uri): ByteArray? =
+  contentResolver.openInputStream(uri)?.use { it.readBytesWithLimit(MAX_WAV_IMPORT_BYTES) }
+
+private fun InputStream.readBytesWithLimit(maxBytes: Int): ByteArray {
+  val output = ByteArrayOutputStream()
+  val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+  var totalBytes = 0
+  while (true) {
+    val read = read(buffer)
+    if (read == -1) break
+    totalBytes += read
+    require(totalBytes <= maxBytes) { "Selected WAV file is too large. Choose a file under 25 MB." }
+    output.write(buffer, 0, read)
+  }
+  return output.toByteArray()
 }
 
 @Composable
