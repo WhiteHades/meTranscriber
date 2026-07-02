@@ -299,7 +299,7 @@ class TranscriberViewModel(
     val current = _selectedSession.value ?: return
     viewModelScope.launch {
       val updated = current.copy(notes = notes)
-      repository.saveSession(updated)
+      repository.updateSessionNotes(current.id, notes)
       _selectedSession.value = updated
       loadSessions()
     }

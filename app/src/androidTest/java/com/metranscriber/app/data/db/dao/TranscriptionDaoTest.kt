@@ -104,4 +104,38 @@ class TranscriptionDaoTest {
         val segments = dao.getSegmentsForSession(session.id).first()
         assertEquals(0, segments.size)
     }
+
+    @Test
+    fun updateSessionNotes_preservesSegments() = runBlocking {
+        val session = TranscriptionEntity(
+            id = "test_id",
+            title = "Test Session",
+            createdAt = 123456789L,
+            durationMs = 5000L,
+            language = "en",
+            engineUsed = "vosk",
+            rawText = "hello world",
+            wordCount = 2,
+            audioFilePath = null,
+            notes = "old notes"
+        )
+        val segment = TranscriptSegmentEntity(
+            id = "segment_id",
+            sessionId = session.id,
+            timestampMs = 1000L,
+            text = "hello",
+            speaker = null,
+            confidence = 0.9f,
+            isPartial = false
+        )
+
+        dao.insertSession(session)
+        dao.insertSegments(listOf(segment))
+        dao.updateSessionNotes(session.id, "new notes")
+
+        val updatedSession = dao.getSessionById(session.id)
+        val segments = dao.getSegmentsForSession(session.id).first()
+        assertEquals("new notes", updatedSession?.notes)
+        assertEquals(listOf(segment), segments)
+    }
 }

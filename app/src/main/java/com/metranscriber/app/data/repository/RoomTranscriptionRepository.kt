@@ -24,6 +24,10 @@ class RoomTranscriptionRepository(private val dao: TranscriptionDao) : Transcrip
         return dao.getSessionById(id)?.toDomain()
     }
 
+    override suspend fun updateSessionNotes(sessionId: String, notes: String?) {
+        dao.updateSessionNotes(sessionId, notes)
+    }
+
     override suspend fun deleteSession(id: String) {
         dao.deleteSession(id)
     }

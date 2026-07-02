@@ -20,6 +20,9 @@ interface TranscriptionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSession(session: TranscriptionEntity): Long
 
+    @Query("UPDATE sessions SET notes = :notes WHERE id = :sessionId")
+    suspend fun updateSessionNotes(sessionId: String, notes: String?)
+
     @Query("DELETE FROM sessions WHERE id = :id")
     suspend fun deleteSession(id: String)
 

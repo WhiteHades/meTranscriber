@@ -9,6 +9,7 @@ interface TranscriptionRepository {
   suspend fun saveSession(session: TranscriptionSession)
   fun getSessions(): Flow<List<TranscriptionSession>>
   suspend fun getSessionById(id: String): TranscriptionSession?
+  suspend fun updateSessionNotes(sessionId: String, notes: String?)
   suspend fun deleteSession(id: String)
   suspend fun saveSegments(segments: List<TranscriptSegment>)
   fun getSegmentsForSession(sessionId: String): Flow<List<TranscriptSegment>>

@@ -22,6 +22,11 @@ class FakeTranscriptionRepository : TranscriptionRepository {
         return _sessions.value[id]
     }
 
+    override suspend fun updateSessionNotes(sessionId: String, notes: String?) {
+        val session = _sessions.value[sessionId] ?: return
+        _sessions.value = _sessions.value + (sessionId to session.copy(notes = notes))
+    }
+
     override suspend fun deleteSession(id: String) {
         _sessions.value = _sessions.value - id
         _segments.value = _segments.value - id
