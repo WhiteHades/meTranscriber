@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import com.metranscriber.app.engine.audio.FakeAudioRecorder
+import com.metranscriber.app.engine.audio.WavAudioReaderTest
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -146,6 +148,20 @@ class TranscriberViewModelTest {
 
     assertTrue(srt.contains("00:00:00,000 --> 00:00:01,500"))
     assertTrue(srt.contains("00:00:01,500 --> 00:00:03,500"))
+  }
+
+  @Test
+  fun importWavFile_savesImportedSession() = runTest(testDispatcher) {
+    val wav = WavAudioReaderTest.wavBytes(frames = ShortArray(1024) { 1000 })
+
+    viewModel.importWavFile("sample.wav", wav)
+    testScheduler.advanceUntilIdle()
+
+    val sessions = repository.getSessions().first()
+    assertEquals(1, sessions.size)
+    assertEquals("Imported sample.wav", sessions[0].title)
+    assertEquals("sample.wav", sessions[0].audioFilePath)
+    assertFalse(viewModel.isImporting.value)
   }
 
   private class FailingEngine : TranscriberEngine {

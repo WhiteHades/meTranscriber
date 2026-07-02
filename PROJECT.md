@@ -17,6 +17,7 @@ Offline-first Android transcription app using Vosk for on-device speech recognit
 
 - Room persistence is implemented for sessions and segments.
 - Live microphone permission and single-stream recording flow are wired.
+- WAV import is implemented for 16-bit PCM audio with mono/stereo handling and 16 kHz resampling.
 - Vosk engine initialization reports model errors instead of silently falling back.
 - JSON export uses Kotlin serialization.
 - SRT export uses segment timestamps.
@@ -26,7 +27,7 @@ Offline-first Android transcription app using Vosk for on-device speech recognit
 ## Known Gaps
 
 - Vosk model assets are not committed.
-- Pre-recorded audio import is not implemented.
+- MP3 and compressed audio import are not implemented.
 - Real-device/emulator instrumentation tests still need to be run outside this session.
 - Release signing, Play Store metadata, and F-Droid metadata are not configured.
 

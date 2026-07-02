@@ -5,6 +5,7 @@ Offline-first Android transcription app built with Kotlin, Jetpack Compose, Room
 ## Current Capabilities
 
 - Live microphone capture at 16 kHz mono PCM.
+- WAV file import for 16-bit PCM audio, with mono/stereo handling and 16 kHz resampling.
 - Pluggable transcription engine boundary with Vosk and a simulated fallback engine for tests/development.
 - Local Room database for transcription sessions and timestamped transcript segments.
 - History search across title, transcript text, and notes.
@@ -15,7 +16,7 @@ Offline-first Android transcription app built with Kotlin, Jetpack Compose, Room
 
 ## Not Implemented Yet
 
-- Pre-recorded `.wav`/`.mp3` import.
+- `.mp3` import.
 - Bundled Vosk model assets.
 - Speaker diarization.
 - Full-text-search virtual tables.

@@ -14,9 +14,11 @@ import com.metranscriber.app.engine.TranscriberEngine
 import com.metranscriber.app.engine.VoskTranscriberEngine
 import com.metranscriber.app.engine.audio.AudioRecorder
 import com.metranscriber.app.engine.audio.AndroidAudioRecorder
+import com.metranscriber.app.engine.audio.WavAudioReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,6 +62,9 @@ class TranscriberViewModel(
   private val _recordingError = MutableStateFlow<String?>(null)
   val recordingError: StateFlow<String?> = _recordingError.asStateFlow()
 
+  private val _isImporting = MutableStateFlow(false)
+  val isImporting: StateFlow<Boolean> = _isImporting.asStateFlow()
+
   val sessionsList: StateFlow<List<TranscriptionSession>> = combine(
     repository.getSessions(),
     _searchQuery
@@ -99,7 +104,7 @@ class TranscriberViewModel(
   }
 
   fun startRecording() {
-    if (_recordingState.value == RecordingState.RECORDING) return
+    if (_recordingState.value == RecordingState.RECORDING || _isImporting.value) return
     
     _recordingState.value = RecordingState.RECORDING
     _recordingError.value = null
@@ -155,35 +160,75 @@ class TranscriberViewModel(
         val sessionId = UUID.randomUUID().toString()
         val wordCount = text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
         
-        val newSession = TranscriptionSession(
-          id = sessionId,
-          title = "Recording " + String.format("%tF %<tR", System.currentTimeMillis()),
-          createdAt = System.currentTimeMillis(),
+        saveCompletedTranscription(
+          sessionId = sessionId,
+          title = "Recording " + String.format(Locale.US, "%tF %<tR", System.currentTimeMillis()),
           durationMs = duration,
-          language = "en",
-          engineUsed = activeEngine.value.engineId,
-          rawText = text,
+          sourcePath = null,
+          text = text,
           wordCount = wordCount,
-          audioFilePath = null,
-          notes = ""
+          segments = segmentsToSave
         )
-        
-        val mappedSegments = segmentsToSave.map { segment ->
-          segment.copy(
-            id = UUID.randomUUID().toString(),
-            sessionId = sessionId,
-            timestampMs = normalizedTimestamp(segment.timestampMs),
-            isPartial = false
-          )
-        }
-        repository.saveFullTranscription(newSession, mappedSegments)
-        
         loadSessions()
       }
     }
     
     _timerText.value = "00:00"
     _waveformAmplitudes.value = emptyList()
+  }
+
+  fun importWavFile(displayName: String, wavBytes: ByteArray) {
+    if (_recordingState.value == RecordingState.RECORDING || _isImporting.value) return
+
+    _isImporting.value = true
+    _recordingError.value = null
+    _liveSegments.value = emptyList()
+    _waveformAmplitudes.value = emptyList()
+    startTimeMs = System.currentTimeMillis()
+
+    viewModelScope.launch {
+      try {
+        val decodedAudio = WavAudioReader.decode(wavBytes)
+        val engine = activeEngine.value
+        engine.initialize()
+
+        val importedSegments = mutableListOf<TranscriptSegment>()
+        val audioFlow = flow {
+          decodedAudio.chunks.forEach { chunk ->
+            updateWaveform(chunk)
+            emit(chunk)
+          }
+        }
+
+        engine.transcribeStream(audioFlow).collect { segment ->
+          importedSegments += segment
+          _liveSegments.value = importedSegments.toList()
+        }
+
+        val segmentsToSave = segmentsForSavedSession(importedSegments)
+        val text = segmentsToSave.joinToString(" ") { it.text }
+        if (text.isNotBlank()) {
+          val sessionId = UUID.randomUUID().toString()
+          saveCompletedTranscription(
+            sessionId = sessionId,
+            title = "Imported ${displayName.ifBlank { "WAV audio" }}",
+            durationMs = decodedAudio.durationMs,
+            sourcePath = displayName,
+            text = text,
+            wordCount = text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size,
+            segments = segmentsToSave
+          )
+          loadSessions()
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _recordingError.value = e.message ?: "Audio import failed"
+      } finally {
+        _isImporting.value = false
+        _waveformAmplitudes.value = emptyList()
+      }
+    }
   }
 
   fun clearRecordingError() {
@@ -297,10 +342,43 @@ class TranscriberViewModel(
     return String.format(Locale.US, "%02d:%02d:%02d,%03d", hrs, mins, secs, millis)
   }
 
-  private fun segmentsForSavedSession(): List<TranscriptSegment> {
-    val finalized = _liveSegments.value.filter { !it.isPartial && it.text.isNotBlank() }
+  private fun segmentsForSavedSession(segments: List<TranscriptSegment> = _liveSegments.value): List<TranscriptSegment> {
+    val finalized = segments.filter { !it.isPartial && it.text.isNotBlank() }
     if (finalized.isNotEmpty()) return finalized
-    return _liveSegments.value.lastOrNull { it.text.isNotBlank() }?.let { listOf(it) } ?: emptyList()
+    return segments.lastOrNull { it.text.isNotBlank() }?.let { listOf(it) } ?: emptyList()
+  }
+
+  private suspend fun saveCompletedTranscription(
+    sessionId: String,
+    title: String,
+    durationMs: Long,
+    sourcePath: String?,
+    text: String,
+    wordCount: Int,
+    segments: List<TranscriptSegment>
+  ) {
+    val newSession = TranscriptionSession(
+      id = sessionId,
+      title = title,
+      createdAt = System.currentTimeMillis(),
+      durationMs = durationMs,
+      language = "en",
+      engineUsed = activeEngine.value.engineId,
+      rawText = text,
+      wordCount = wordCount,
+      audioFilePath = sourcePath,
+      notes = ""
+    )
+
+    val mappedSegments = segments.map { segment ->
+      segment.copy(
+        id = UUID.randomUUID().toString(),
+        sessionId = sessionId,
+        timestampMs = normalizedTimestamp(segment.timestampMs),
+        isPartial = false
+      )
+    }
+    repository.saveFullTranscription(newSession, mappedSegments)
   }
 
   private fun normalizedTimestamp(timestampMs: Long): Long {

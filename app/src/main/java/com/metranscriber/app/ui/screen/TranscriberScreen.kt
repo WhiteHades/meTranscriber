@@ -53,6 +53,9 @@ import com.metranscriber.app.engine.TranscriberEngine
 import com.metranscriber.app.theme.*
 import com.metranscriber.app.ui.viewmodel.TranscriberViewModel
 import com.metranscriber.app.ui.viewmodel.RecordingState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +79,8 @@ fun TranscriberScreen(
   val selectedSessionNotes by viewModel.selectedSessionNotes.collectAsStateWithLifecycle()
   val activeEngine by viewModel.activeEngine.collectAsStateWithLifecycle()
   val recordingError by viewModel.recordingError.collectAsStateWithLifecycle()
+  val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
+  val scope = rememberCoroutineScope()
 
   var currentTab by rememberSaveable { mutableIntStateOf(0) }
   var hasMicPermission by remember {
@@ -92,6 +97,23 @@ fun TranscriberScreen(
         viewModel.startRecording()
       } else {
         Toast.makeText(context, "Microphone permission required for transcription", Toast.LENGTH_LONG).show()
+      }
+    }
+  )
+
+  val wavImportLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocument(),
+    onResult = { uri ->
+      if (uri == null) return@rememberLauncherForActivityResult
+      scope.launch {
+        val bytes = withContext(Dispatchers.IO) {
+          context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }
+        if (bytes == null) {
+          snackbarHostState.showSnackbar("Could not read selected audio file")
+        } else {
+          viewModel.importWavFile(uri.lastPathSegment ?: "selected audio", bytes)
+        }
       }
     }
   )
@@ -177,15 +199,21 @@ fun TranscriberScreen(
           waveformAmplitudes = waveformAmplitudes,
           liveSegments = liveSegments,
           activeEngine = activeEngine,
+          isImporting = isImporting,
+          onImportClick = {
+            wavImportLauncher.launch(arrayOf("audio/wav", "audio/x-wav", "audio/wave", "audio/*"))
+          },
           onRecordToggle = {
-            if (recordingState == RecordingState.IDLE) {
-              if (hasMicPermission) {
-                viewModel.startRecording()
+            if (!isImporting) {
+              if (recordingState == RecordingState.IDLE) {
+                if (hasMicPermission) {
+                  viewModel.startRecording()
+                } else {
+                  permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
               } else {
-                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                viewModel.stopRecording()
               }
-            } else {
-              viewModel.stopRecording()
             }
           }
         )
@@ -232,6 +260,8 @@ fun TranscribeTab(
   waveformAmplitudes: List<Float>,
   liveSegments: List<TranscriptSegment>,
   activeEngine: TranscriberEngine,
+  isImporting: Boolean,
+  onImportClick: () -> Unit,
   onRecordToggle: () -> Unit
 ) {
   val haptic = LocalHapticFeedback.current
@@ -390,6 +420,28 @@ fun TranscribeTab(
       modifier = Modifier.fillMaxWidth()
     ) {
       AnimatedVisibility(
+        visible = isImporting,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+      ) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+          horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+          LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+          Spacer(modifier = Modifier.height(8.dp))
+          Text(
+            text = "Importing WAV audio...",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+          )
+        }
+      }
+
+      AnimatedVisibility(
         visible = recordingState == RecordingState.RECORDING,
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically()
@@ -438,6 +490,21 @@ fun TranscribeTab(
         }
       }
 
+      OutlinedButton(
+        onClick = onImportClick,
+        enabled = recordingState == RecordingState.IDLE && !isImporting,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.padding(bottom = 12.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Default.UploadFile,
+          contentDescription = null,
+          modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(if (isImporting) "Importing" else "Import WAV")
+      }
+
       // Mic Pulse Animation
       val infiniteTransition = rememberInfiniteTransition(label = "pulse")
       val scale by infiniteTransition.animateFloat(
@@ -476,7 +543,7 @@ fun TranscribeTab(
                 }
               )
             )
-            .clickable {
+            .clickable(enabled = !isImporting) {
               haptic.performHapticFeedback(HapticFeedbackType.LongPress)
               onRecordToggle()
             },
@@ -484,7 +551,11 @@ fun TranscribeTab(
         ) {
           Icon(
             imageVector = if (recordingState == RecordingState.RECORDING) Icons.Default.Stop else Icons.Default.Mic,
-            contentDescription = if (recordingState == RecordingState.RECORDING) "Stop recording" else "Start recording",
+            contentDescription = when {
+              isImporting -> "Import in progress"
+              recordingState == RecordingState.RECORDING -> "Stop recording"
+              else -> "Start recording"
+            },
             tint = Color.White,
             modifier = Modifier.size(32.dp)
           )
