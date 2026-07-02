@@ -20,6 +20,9 @@ class AndroidAudioRecorder : AudioRecorder {
   @Volatile
   private var isRecording = false
 
+  @Volatile
+  private var currentAudioRecord: AudioRecord? = null
+
   @SuppressLint("MissingPermission")
   override fun recordStream(): Flow<ShortArray> = callbackFlow {
     val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
@@ -58,6 +61,7 @@ class AndroidAudioRecorder : AudioRecorder {
     }
 
     isRecording = true
+    currentAudioRecord = audioRecord
 
     val buffer = ShortArray(1024)
     val readJob = launch(Dispatchers.IO) {
@@ -69,10 +73,13 @@ class AndroidAudioRecorder : AudioRecorder {
             System.arraycopy(buffer, 0, chunk, 0, read)
             send(chunk)
           } else if (read < 0) {
-            close(IllegalStateException("audiorecord read error: $read"))
+            if (isRecording) {
+              close(IllegalStateException("audiorecord read error: $read"))
+            }
             break
           }
         }
+        close()
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
@@ -81,7 +88,7 @@ class AndroidAudioRecorder : AudioRecorder {
     }
 
     awaitClose {
-      isRecording = false
+      stopRecording()
       if (audioRecord.state == AudioRecord.STATE_INITIALIZED) {
         try {
           audioRecord.stop()
@@ -90,9 +97,24 @@ class AndroidAudioRecorder : AudioRecorder {
         }
         audioRecord.release()
       }
+      if (currentAudioRecord === audioRecord) {
+        currentAudioRecord = null
+      }
       readJob.cancel()
     }
   }.flowOn(Dispatchers.IO)
 
   override fun isCurrentlyRecording(): Boolean = isRecording
+
+  override fun stopRecording() {
+    isRecording = false
+    val audioRecord = currentAudioRecord ?: return
+    if (audioRecord.state == AudioRecord.STATE_INITIALIZED && audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+      try {
+        audioRecord.stop()
+      } catch (e: Exception) {
+        // ignore; awaitClose still releases the recorder
+      }
+    }
+  }
 }

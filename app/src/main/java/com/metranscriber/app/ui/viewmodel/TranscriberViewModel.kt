@@ -106,7 +106,7 @@ class TranscriberViewModel(
   }
 
   fun startRecording() {
-    if (_recordingState.value == RecordingState.RECORDING || _isImporting.value) return
+    if (_recordingState.value == RecordingState.RECORDING || _isImporting.value || recordingJob?.isActive == true) return
     
     _recordingState.value = RecordingState.RECORDING
     _recordingError.value = null
@@ -130,6 +130,7 @@ class TranscriberViewModel(
       val engine = activeEngine.value
       try {
         engine.initialize()
+        if (_recordingState.value != RecordingState.RECORDING) return@launch
         
         val recordFlow = audioRecorder.recordStream().onEach(::updateWaveform)
 
@@ -137,6 +138,8 @@ class TranscriberViewModel(
         engine.transcribeStream(recordFlow).collect { segment ->
           _liveSegments.value = _liveSegments.value + segment
         }
+        saveRecordingSession(System.currentTimeMillis() - startTimeMs)
+        resetRecordingUiState(cancelRecordingJob = false)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
@@ -151,30 +154,7 @@ class TranscriberViewModel(
     
     _recordingState.value = RecordingState.IDLE
     timerJob?.cancel()
-    recordingJob?.cancel()
-    
-    val duration = System.currentTimeMillis() - startTimeMs
-    val segmentsToSave = segmentsForSavedSession()
-    val text = segmentsToSave.joinToString(" ") { it.text }
-    
-    if (text.isNotBlank()) {
-      viewModelScope.launch {
-        val sessionId = UUID.randomUUID().toString()
-        val wordCount = text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
-        
-        saveCompletedTranscription(
-          sessionId = sessionId,
-          title = "Recording " + String.format(Locale.US, "%tF %<tR", System.currentTimeMillis()),
-          durationMs = duration,
-          sourcePath = null,
-          text = text,
-          wordCount = wordCount,
-          segments = segmentsToSave
-        )
-        loadSessions()
-      }
-    }
-    
+    audioRecorder.stopRecording()
     _timerText.value = "00:00"
     _waveformAmplitudes.value = emptyList()
   }
@@ -350,6 +330,24 @@ class TranscriberViewModel(
     val finalized = segments.filter { !it.isPartial && it.text.isNotBlank() }
     if (finalized.isNotEmpty()) return finalized
     return segments.lastOrNull { it.text.isNotBlank() }?.let { listOf(it) } ?: emptyList()
+  }
+
+  private suspend fun saveRecordingSession(durationMs: Long) {
+    val segmentsToSave = segmentsForSavedSession()
+    val text = segmentsToSave.joinToString(" ") { it.text }
+    if (text.isBlank()) return
+
+    val sessionId = UUID.randomUUID().toString()
+    saveCompletedTranscription(
+      sessionId = sessionId,
+      title = "Recording " + String.format(Locale.US, "%tF %<tR", System.currentTimeMillis()),
+      durationMs = durationMs,
+      sourcePath = null,
+      text = text,
+      wordCount = text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size,
+      segments = segmentsToSave
+    )
+    loadSessions()
   }
 
   private suspend fun saveCompletedTranscription(

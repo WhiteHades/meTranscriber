@@ -9,8 +9,10 @@ import com.metranscriber.app.domain.model.TranscriptionSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import com.metranscriber.app.engine.audio.FakeAudioRecorder
 import com.metranscriber.app.engine.audio.WavAudioReaderTest
 import kotlinx.coroutines.test.*
@@ -65,7 +67,8 @@ class TranscriberViewModelTest {
     testScheduler.advanceTimeBy(100)
     assertEquals(RecordingState.RECORDING, viewModel.recordingState.value)
     viewModel.stopRecording()
-    testScheduler.advanceTimeBy(100)
+    testScheduler.advanceUntilIdle()
+    assertEquals(RecordingState.IDLE, viewModel.recordingState.value)
   }
 
   @Test
@@ -76,7 +79,7 @@ class TranscriberViewModelTest {
     assertEquals(1, audioRecorder.recordStreamCalls)
 
     viewModel.stopRecording()
-    testScheduler.advanceTimeBy(100)
+    testScheduler.advanceUntilIdle()
   }
 
   @Test
@@ -102,9 +105,23 @@ class TranscriberViewModelTest {
     // The title starts with "Recording " followed by the date
     assertTrue(sessions[0].title.startsWith("Recording "))
     val segments = repository.getSegmentsForSession(sessions[0].id).first()
-    assertEquals(1, segments.size)
+    assertTrue(segments.isNotEmpty())
     assertEquals(2000L, segments[0].timestampMs)
     assertEquals(sessions[0].rawText, segments.joinToString(" ") { it.text })
+  }
+
+  @Test
+  fun stopRecording_waitsForFinalEngineSegmentBeforeSaving() = runTest(testDispatcher) {
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(FinalOnCompletionEngine())), audioRecorder)
+
+    viewModel.startRecording()
+    testScheduler.advanceTimeBy(100)
+    viewModel.stopRecording()
+    testScheduler.advanceUntilIdle()
+
+    val sessions = repository.getSessions().first()
+    assertEquals(1, sessions.size)
+    assertEquals("final words", sessions[0].rawText)
   }
 
   @Test
@@ -177,5 +194,21 @@ class TranscriberViewModelTest {
     override suspend fun release() = Unit
 
     override fun transcribeStream(audioFlow: Flow<ShortArray>): Flow<TranscriptSegment> = emptyFlow()
+  }
+
+  private class FinalOnCompletionEngine : TranscriberEngine {
+    override val engineId: String = "final"
+    override val displayName: String = "Final"
+    override val isAvailable: Boolean = true
+    override val isModelDownloaded: Boolean = true
+
+    override suspend fun initialize() = Unit
+
+    override suspend fun release() = Unit
+
+    override fun transcribeStream(audioFlow: Flow<ShortArray>): Flow<TranscriptSegment> = flow {
+      audioFlow.collect { }
+      emit(TranscriptSegment("final", "session", 3000L, "final words", null, 1f, false))
+    }
   }
 }

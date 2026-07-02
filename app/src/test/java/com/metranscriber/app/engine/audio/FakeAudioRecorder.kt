@@ -26,7 +26,7 @@ class FakeAudioRecorder : AudioRecorder {
 
     override fun isCurrentlyRecording(): Boolean = isRecording
 
-    fun stop() {
+    override fun stopRecording() {
         isRecording = false
     }
 }
