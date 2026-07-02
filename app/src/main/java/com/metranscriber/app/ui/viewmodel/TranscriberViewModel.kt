@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -96,6 +98,7 @@ class TranscriberViewModel(
   private var selectedSessionJob: Job? = null
   private var startTimeMs = 0L
   private val exportJson = Json { prettyPrint = true }
+  private val notesSaveMutex = Mutex()
 
   init {
     loadSessions()
@@ -283,8 +286,12 @@ class TranscriberViewModel(
     val current = _selectedSession.value ?: return
     viewModelScope.launch {
       val updated = current.copy(notes = notes)
-      repository.updateSessionNotes(current.id, notes)
-      _selectedSession.value = updated
+      notesSaveMutex.withLock {
+        repository.updateSessionNotes(current.id, notes)
+      }
+      if (_selectedSession.value?.id == current.id) {
+        _selectedSession.value = updated
+      }
       loadSessions()
     }
   }

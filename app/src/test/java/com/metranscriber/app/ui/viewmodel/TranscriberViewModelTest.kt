@@ -6,13 +6,17 @@ import com.metranscriber.app.engine.FakeTranscriberEngine
 import com.metranscriber.app.engine.TranscriberEngine
 import com.metranscriber.app.domain.model.TranscriptSegment
 import com.metranscriber.app.domain.model.TranscriptionSession
+import com.metranscriber.app.data.repository.TranscriptionRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import com.metranscriber.app.engine.audio.FakeAudioRecorder
 import com.metranscriber.app.engine.audio.WavAudioReaderTest
 import kotlinx.coroutines.test.*
@@ -125,6 +129,21 @@ class TranscriberViewModelTest {
   }
 
   @Test
+  fun updateNotes_preservesLatestEditWhenWritesCompleteOutOfOrder() = runTest(testDispatcher) {
+    val delayedRepository = DelayedNotesRepository()
+    val session = testSession(notes = "initial")
+    delayedRepository.saveSession(session)
+    viewModel = TranscriberViewModel(delayedRepository, EngineManager(listOf(FakeTranscriberEngine())), audioRecorder)
+    viewModel.selectSession(session)
+
+    viewModel.updateNotes("first")
+    viewModel.updateNotes("second")
+    testScheduler.advanceUntilIdle()
+
+    assertEquals("second", delayedRepository.getSessionById(session.id)?.notes)
+  }
+
+  @Test
   fun exportSessionAsJson_handlesSpecialCharacters() {
     val session = TranscriptionSession(
       id = "session_1",
@@ -211,4 +230,47 @@ class TranscriberViewModelTest {
       emit(TranscriptSegment("final", "session", 3000L, "final words", null, 1f, false))
     }
   }
+
+  private class DelayedNotesRepository : TranscriptionRepository {
+    private val sessions = MutableStateFlow<Map<String, TranscriptionSession>>(emptyMap())
+
+    override suspend fun saveSession(session: TranscriptionSession) {
+      sessions.value = sessions.value + (session.id to session)
+    }
+
+    override fun getSessions(): Flow<List<TranscriptionSession>> = sessions.map { it.values.toList() }
+
+    override suspend fun getSessionById(id: String): TranscriptionSession? = sessions.value[id]
+
+    override suspend fun updateSessionNotes(sessionId: String, notes: String?) {
+      if (notes == "first") delay(100)
+      val session = sessions.value[sessionId] ?: return
+      sessions.value = sessions.value + (sessionId to session.copy(notes = notes))
+    }
+
+    override suspend fun deleteSession(id: String) {
+      sessions.value = sessions.value - id
+    }
+
+    override suspend fun saveSegments(segments: List<TranscriptSegment>) = Unit
+
+    override fun getSegmentsForSession(sessionId: String): Flow<List<TranscriptSegment>> = emptyFlow()
+
+    override suspend fun saveFullTranscription(session: TranscriptionSession, segments: List<TranscriptSegment>) {
+      saveSession(session)
+    }
+  }
+
+  private fun testSession(notes: String? = null): TranscriptionSession = TranscriptionSession(
+    id = "session_1",
+    title = "Session",
+    createdAt = 123L,
+    durationMs = 456L,
+    language = "en",
+    engineUsed = "test",
+    rawText = "text",
+    wordCount = 1,
+    audioFilePath = null,
+    notes = notes
+  )
 }
