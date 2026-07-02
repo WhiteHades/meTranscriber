@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.abs
 
@@ -112,7 +113,7 @@ class TranscriberViewModel(
         val elapsedSec = (System.currentTimeMillis() - startTimeMs) / 1000
         val mins = elapsedSec / 60
         val secs = elapsedSec % 60
-        _timerText.value = String.format("%02d:%02d", mins, secs)
+        _timerText.value = String.format(Locale.US, "%02d:%02d", mins, secs)
         delay(1000)
       }
     }
@@ -293,7 +294,7 @@ class TranscriberViewModel(
     val mins = (ms % 3600000) / 60000
     val secs = (ms % 60000) / 1000
     val millis = ms % 1000
-    return String.format("%02d:%02d:%02d,%03d", hrs, mins, secs, millis)
+    return String.format(Locale.US, "%02d:%02d:%02d,%03d", hrs, mins, secs, millis)
   }
 
   private fun segmentsForSavedSession(): List<TranscriptSegment> {

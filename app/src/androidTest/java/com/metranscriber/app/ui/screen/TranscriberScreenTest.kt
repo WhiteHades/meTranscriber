@@ -19,8 +19,6 @@ class TranscriberScreenTest {
       }
     }
     
-    // Check for "ME" and "TRANSCRIBER" title parts
-    composeTestRule.onNodeWithText("ME").assertExists()
-    composeTestRule.onNodeWithText("TRANSCRIBER").assertExists()
+    composeTestRule.onNodeWithText("MeTranscriber").assertExists()
   }
 }
