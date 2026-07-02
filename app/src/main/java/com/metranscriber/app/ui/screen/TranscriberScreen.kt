@@ -8,6 +8,10 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -19,9 +23,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,7 +35,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +60,7 @@ fun TranscriberScreen(
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
+  val snackbarHostState = remember { SnackbarHostState() }
   val viewModel: TranscriberViewModel = viewModel {
     TranscriberViewModel.createFactory(context)
   }
@@ -69,7 +77,7 @@ fun TranscriberScreen(
   val activeEngine by viewModel.activeEngine.collectAsStateWithLifecycle()
   val recordingError by viewModel.recordingError.collectAsStateWithLifecycle()
 
-  var currentTab by remember { mutableIntStateOf(0) }
+  var currentTab by rememberSaveable { mutableIntStateOf(0) }
   var hasMicPermission by remember {
     mutableStateOf(
       ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -90,7 +98,11 @@ fun TranscriberScreen(
 
   LaunchedEffect(recordingError) {
     recordingError?.let { message ->
-      Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+      snackbarHostState.showSnackbar(
+        message = message,
+        actionLabel = "Dismiss",
+        duration = SnackbarDuration.Long
+      )
       viewModel.clearRecordingError()
     }
   }
@@ -98,6 +110,7 @@ fun TranscriberScreen(
   Scaffold(
     modifier = modifier.fillMaxSize(),
     containerColor = MaterialTheme.colorScheme.background,
+    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     topBar = {
       TopAppBar(
         title = {
@@ -109,7 +122,7 @@ fun TranscriberScreen(
           )
         },
         colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.background
+          containerColor = MaterialTheme.colorScheme.surface
         ),
         actions = {
           IconButton(onClick = {
@@ -149,7 +162,10 @@ fun TranscriberScreen(
         .fillMaxSize()
         .background(
           Brush.verticalGradient(
-            listOf(PremiumBackground, Color(0xFF151520))
+            listOf(
+              MaterialTheme.colorScheme.background,
+              MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            )
           )
         )
         .padding(innerPadding)
@@ -218,6 +234,10 @@ fun TranscribeTab(
   activeEngine: TranscriberEngine,
   onRecordToggle: () -> Unit
 ) {
+  val haptic = LocalHapticFeedback.current
+  val engineStatus = if (activeEngine.isModelDownloaded) "Ready" else "Model check on start"
+  val engineStatusColor = if (activeEngine.isModelDownloaded) AccentCyan else MaterialTheme.colorScheme.tertiary
+
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -225,10 +245,9 @@ fun TranscribeTab(
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.SpaceBetween
   ) {
-    // Top engine selector status
     Card(
       shape = RoundedCornerShape(24.dp),
-      colors = CardDefaults.cardColors(containerColor = GlassSurface),
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)),
       modifier = Modifier
         .fillMaxWidth()
         .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
@@ -240,7 +259,7 @@ fun TranscribeTab(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
           Text(
             text = "Active Engine",
             fontSize = 12.sp,
@@ -253,14 +272,33 @@ fun TranscribeTab(
             color = MaterialTheme.colorScheme.primary
           )
         }
-        Text(
-          text = "Local Engine",
-          fontSize = 11.sp,
-          fontWeight = FontWeight.Bold,
-          color = AccentCyan,
-          modifier = Modifier
-            .background(AccentCyan.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+        AssistChip(
+          onClick = {},
+          enabled = false,
+          label = {
+            Text(
+              text = engineStatus,
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold
+            )
+          },
+          leadingIcon = {
+            Icon(
+              imageVector = if (activeEngine.isModelDownloaded) Icons.Default.CheckCircle else Icons.Default.Storage,
+              contentDescription = null,
+              modifier = Modifier.size(16.dp)
+            )
+          },
+          colors = AssistChipDefaults.assistChipColors(
+            disabledContainerColor = engineStatusColor.copy(alpha = 0.12f),
+            disabledLabelColor = engineStatusColor,
+            disabledLeadingIconContentColor = engineStatusColor
+          ),
+          border = AssistChipDefaults.assistChipBorder(
+            enabled = false,
+            borderColor = engineStatusColor.copy(alpha = 0.28f),
+            disabledBorderColor = engineStatusColor.copy(alpha = 0.28f)
+          )
         )
       }
     }
@@ -309,11 +347,11 @@ fun TranscribeTab(
           items(reversedList) { segment ->
             Card(
               shape = RoundedCornerShape(20.dp),
-              colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
+              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)),
               modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp)
-                .border(0.5.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
             ) {
               Column(modifier = Modifier.padding(12.dp)) {
                 Row(
@@ -351,47 +389,53 @@ fun TranscribeTab(
       horizontalAlignment = Alignment.CenterHorizontally,
       modifier = Modifier.fillMaxWidth()
     ) {
-      if (recordingState == RecordingState.RECORDING) {
-        // High fidelity Canvas Waveform
-        Canvas(
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .padding(horizontal = 16.dp)
-        ) {
-          val barWidth = 6.dp.toPx()
-          val gap = 4.dp.toPx()
-          val amplitudeList = waveformAmplitudes
-          val totalBars = (size.width / (barWidth + gap)).toInt()
+      AnimatedVisibility(
+        visible = recordingState == RecordingState.RECORDING,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+      ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          val waveformColor = MaterialTheme.colorScheme.primary
+          Canvas(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(56.dp)
+              .padding(horizontal = 16.dp)
+          ) {
+            val barWidth = 6.dp.toPx()
+            val gap = 4.dp.toPx()
+            val amplitudeList = waveformAmplitudes
+            val totalBars = (size.width / (barWidth + gap)).toInt()
 
-          val activeList = if (amplitudeList.size > totalBars) {
-            amplitudeList.takeLast(totalBars)
-          } else {
-            amplitudeList
+            val activeList = if (amplitudeList.size > totalBars) {
+              amplitudeList.takeLast(totalBars)
+            } else {
+              amplitudeList
+            }
+
+            val startX = (size.width - (activeList.size * (barWidth + gap))) / 2f
+
+            activeList.forEachIndexed { index, amp ->
+              val barHeight = size.height * amp
+              val x = startX + index * (barWidth + gap)
+              val y = (size.height - barHeight) / 2f
+              drawRoundRect(
+                brush = SolidColor(waveformColor),
+                topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f, barWidth / 2f)
+              )
+            }
           }
-
-          val startX = (size.width - (activeList.size * (barWidth + gap))) / 2f
-
-          activeList.forEachIndexed { index, amp ->
-            val barHeight = size.height * amp
-            val x = startX + index * (barWidth + gap)
-            val y = (size.height - barHeight) / 2f
-            drawRoundRect(
-              brush = SolidColor(DeepIndigo),
-              topLeft = androidx.compose.ui.geometry.Offset(x, y),
-              size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
-              cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f, barWidth / 2f)
-            )
-          }
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(
+            text = timerText,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = RecordingRed
+          )
+          Spacer(modifier = Modifier.height(16.dp))
         }
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-          text = timerText,
-          fontSize = 18.sp,
-          fontWeight = FontWeight.Bold,
-          color = RecordingRed
-        )
-        Spacer(modifier = Modifier.height(16.dp))
       }
 
       // Mic Pulse Animation
@@ -432,12 +476,15 @@ fun TranscribeTab(
                 }
               )
             )
-            .clickable { onRecordToggle() },
+            .clickable {
+              haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+              onRecordToggle()
+            },
           contentAlignment = Alignment.Center
         ) {
           Icon(
             imageVector = if (recordingState == RecordingState.RECORDING) Icons.Default.Stop else Icons.Default.Mic,
-            contentDescription = "Mic Button",
+            contentDescription = if (recordingState == RecordingState.RECORDING) "Stop recording" else "Start recording",
             tint = Color.White,
             modifier = Modifier.size(32.dp)
           )
@@ -743,7 +790,7 @@ fun SessionDetailsDialog(
         Column(modifier = Modifier.fillMaxWidth()) {
           ListItem(
             headlineContent = { Text("Plain Text (.txt)", fontWeight = FontWeight.SemiBold) },
-            leadingContent = { Icon(Icons.Default.List, contentDescription = null, tint = AccentCyan) },
+            leadingContent = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = AccentCyan) },
             modifier = Modifier.clickable {
               isExporting = false
               onExportTxt()
