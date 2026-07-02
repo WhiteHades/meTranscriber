@@ -13,32 +13,95 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,15 +114,33 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.metranscriber.app.domain.model.TranscriptSegment
 import com.metranscriber.app.domain.model.TranscriptionSession
 import com.metranscriber.app.engine.TranscriberEngine
-import com.metranscriber.app.theme.*
-import com.metranscriber.app.ui.viewmodel.TranscriberViewModel
+import com.metranscriber.app.theme.AccentCyan
+import com.metranscriber.app.theme.CardSurface
+import com.metranscriber.app.theme.DeepIndigo
+import com.metranscriber.app.theme.DeepIndigoContainer
+import com.metranscriber.app.theme.GoldenSun
+import com.metranscriber.app.theme.GradientPrimary
+import com.metranscriber.app.theme.GradientRecording
+import com.metranscriber.app.theme.LightText
+import com.metranscriber.app.theme.MutedText
+import com.metranscriber.app.theme.PanelSurface
+import com.metranscriber.app.theme.PanelSurfaceHigh
+import com.metranscriber.app.theme.PremiumBackground
+import com.metranscriber.app.theme.RecordingRed
+import com.metranscriber.app.theme.SignalLime
+import com.metranscriber.app.theme.SignalOrange
+import com.metranscriber.app.theme.SignalStroke
 import com.metranscriber.app.ui.viewmodel.RecordingState
+import com.metranscriber.app.ui.viewmodel.TranscriberViewModel
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 
 private const val MAX_WAV_IMPORT_BYTES = 25 * 1024 * 1024
 
@@ -141,67 +222,33 @@ fun TranscriberScreen(
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
-    containerColor = MaterialTheme.colorScheme.background,
+    containerColor = PremiumBackground,
     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     topBar = {
-      TopAppBar(
-        title = {
-          Text(
-            text = "MeTranscriber",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-          )
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.surface
-        ),
-        actions = {
-          IconButton(onClick = {
-            Toast.makeText(context, "MeTranscriber v1.0.0 - Premium Offline STT", Toast.LENGTH_SHORT).show()
-          }) {
-            Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.primary)
-          }
+      SignalTopBar(
+        activeTab = currentTab,
+        onInfoClick = {
+          Toast.makeText(context, "MeTranscriber v1.0.0, offline speech cockpit", Toast.LENGTH_SHORT).show()
         }
       )
     },
     bottomBar = {
-      NavigationBar(
-        containerColor = MaterialTheme.colorScheme.background,
-        tonalElevation = 0.dp,
-        modifier = Modifier.border(0.5.dp, MaterialTheme.colorScheme.surface.copy(alpha = 0.2f), RoundedCornerShape(16.dp, 16.dp, 0.dp, 0.dp))
-      ) {
-        NavigationBarItem(
-          selected = currentTab == 0,
-          onClick = { currentTab = 0 },
-          label = { Text("Transcribe", fontWeight = FontWeight.SemiBold) },
-          icon = { Icon(Icons.Default.Mic, contentDescription = "Transcribe") }
-        )
-        NavigationBarItem(
-          selected = currentTab == 1,
-          onClick = {
-            currentTab = 1
-            viewModel.loadSessions()
-          },
-          label = { Text("History", fontWeight = FontWeight.SemiBold) },
-          icon = { Icon(Icons.Default.History, contentDescription = "History") }
-        )
-      }
+      SignalNavigationBar(
+        currentTab = currentTab,
+        onTabSelected = { index ->
+          currentTab = index
+          if (index == 1) viewModel.loadSessions()
+        }
+      )
     }
   ) { innerPadding ->
     Box(
       modifier = Modifier
         .fillMaxSize()
-        .background(
-          Brush.verticalGradient(
-            listOf(
-              MaterialTheme.colorScheme.background,
-              MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            )
-          )
-        )
         .padding(innerPadding)
     ) {
+      SignalBackdrop(modifier = Modifier.matchParentSize())
+
       if (currentTab == 0) {
         TranscribeTab(
           recordingState = recordingState,
@@ -238,20 +285,19 @@ fun TranscriberScreen(
         )
       }
 
-      // Detailed Bottom Sheet Dialog
-      if (selectedSession != null) {
+      selectedSession?.let { session ->
         SessionDetailsDialog(
-          session = selectedSession!!,
+          session = session,
           segments = selectedSessionSegments,
           notes = selectedSessionNotes,
           onNotesChange = { viewModel.updateNotes(it) },
           onDismiss = { viewModel.selectSession(null) },
           onExportTxt = {
-            val content = viewModel.exportSessionAsTxt(selectedSession!!)
+            val content = viewModel.exportSessionAsTxt(session)
             shareText(context, content, "text/plain")
           },
           onExportJson = {
-            val content = viewModel.exportSessionAsJson(selectedSession!!, selectedSessionSegments)
+            val content = viewModel.exportSessionAsJson(session, selectedSessionSegments)
             shareText(context, content, "application/json")
           },
           onExportSrt = {
@@ -285,6 +331,152 @@ private fun InputStream.readBytesWithLimit(maxBytes: Int): ByteArray {
 }
 
 @Composable
+private fun SignalTopBar(
+  activeTab: Int,
+  onInfoClick: () -> Unit
+) {
+  Surface(
+    color = PremiumBackground.copy(alpha = 0.98f),
+    contentColor = LightText,
+    shadowElevation = 0.dp,
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 18.dp, vertical = 14.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier
+            .size(46.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(GradientPrimary))
+            .border(1.dp, AccentCyan.copy(alpha = 0.28f), RoundedCornerShape(16.dp)),
+          contentAlignment = Alignment.Center
+        ) {
+          Icon(Icons.Default.GraphicEq, contentDescription = null, tint = LightText, modifier = Modifier.size(25.dp))
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+          Text(
+            text = "MeTranscriber",
+            style = MaterialTheme.typography.titleLarge,
+            color = LightText,
+            maxLines = 1
+          )
+          Text(
+            text = if (activeTab == 0) "Live signal capture" else "Transcript archive",
+            style = MaterialTheme.typography.labelSmall,
+            color = MutedText
+          )
+        }
+      }
+
+      IconButton(onClick = onInfoClick) {
+        Icon(Icons.Default.Info, contentDescription = "Info", tint = AccentCyan)
+      }
+    }
+  }
+}
+
+@Composable
+private fun SignalNavigationBar(
+  currentTab: Int,
+  onTabSelected: (Int) -> Unit
+) {
+  Surface(
+    color = PremiumBackground.copy(alpha = 0.96f),
+    contentColor = LightText,
+    border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.5f)),
+    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    NavigationBar(
+      containerColor = Color.Transparent,
+      tonalElevation = 0.dp,
+      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+      NavigationBarItem(
+        selected = currentTab == 0,
+        onClick = { onTabSelected(0) },
+        label = { Text("Transcribe", fontWeight = FontWeight.Bold) },
+        icon = { Icon(Icons.Default.Mic, contentDescription = "Transcribe") },
+        colors = signalNavColors()
+      )
+      NavigationBarItem(
+        selected = currentTab == 1,
+        onClick = { onTabSelected(1) },
+        label = { Text("History", fontWeight = FontWeight.Bold) },
+        icon = { Icon(Icons.Default.History, contentDescription = "History") },
+        colors = signalNavColors()
+      )
+    }
+  }
+}
+
+@Composable
+private fun signalNavColors() =
+  NavigationBarItemDefaults.colors(
+    selectedIconColor = LightText,
+    selectedTextColor = LightText,
+    indicatorColor = DeepIndigo.copy(alpha = 0.58f),
+    unselectedIconColor = MutedText,
+    unselectedTextColor = MutedText
+  )
+
+@Composable
+private fun SignalBackdrop(modifier: Modifier = Modifier) {
+  Box(
+    modifier = modifier
+      .background(
+        Brush.radialGradient(
+          colors = listOf(DeepIndigoContainer.copy(alpha = 0.95f), PremiumBackground),
+          center = Offset(120f, 0f),
+          radius = 760f
+        )
+      )
+      .background(
+        Brush.verticalGradient(
+          colors = listOf(Color.Transparent, PremiumBackground.copy(alpha = 0.2f), PremiumBackground)
+        )
+      )
+  ) {
+    Canvas(modifier = Modifier.matchParentSize()) {
+      val step = 38.dp.toPx()
+      var x = 0f
+      while (x < size.width) {
+        drawLine(
+          color = SignalStroke.copy(alpha = 0.16f),
+          start = Offset(x, 0f),
+          end = Offset(x, size.height),
+          strokeWidth = 1f
+        )
+        x += step
+      }
+      var y = 0f
+      while (y < size.height) {
+        drawLine(
+          color = SignalStroke.copy(alpha = 0.1f),
+          start = Offset(0f, y),
+          end = Offset(size.width, y),
+          strokeWidth = 1f
+        )
+        y += step
+      }
+      drawCircle(
+        color = AccentCyan.copy(alpha = 0.08f),
+        radius = size.minDimension * 0.52f,
+        center = Offset(size.width * 0.86f, size.height * 0.1f),
+        style = Stroke(width = 1.5.dp.toPx())
+      )
+    }
+  }
+}
+
+@Composable
 fun TranscribeTab(
   recordingState: RecordingState,
   timerText: String,
@@ -295,303 +487,430 @@ fun TranscribeTab(
   onImportClick: () -> Unit,
   onRecordToggle: () -> Unit
 ) {
-  val haptic = LocalHapticFeedback.current
-  val engineStatus = if (activeEngine.isModelDownloaded) "Ready" else "Model check on start"
-  val engineStatusColor = if (activeEngine.isModelDownloaded) AccentCyan else MaterialTheme.colorScheme.tertiary
-
   Column(
     modifier = Modifier
       .fillMaxSize()
-      .padding(24.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.SpaceBetween
+      .padding(horizontal = 18.dp, vertical = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
-    Card(
-      shape = RoundedCornerShape(24.dp),
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)),
-      modifier = Modifier
-        .fillMaxWidth()
-        .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
-    ) {
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Column(modifier = Modifier.weight(1f)) {
-          Text(
-            text = "Active Engine",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-          )
-          Text(
-            text = activeEngine.displayName,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-          )
-        }
-        AssistChip(
-          onClick = {},
-          enabled = false,
-          label = {
-            Text(
-              text = engineStatus,
-              fontSize = 11.sp,
-              fontWeight = FontWeight.Bold
-            )
-          },
-          leadingIcon = {
-            Icon(
-              imageVector = if (activeEngine.isModelDownloaded) Icons.Default.CheckCircle else Icons.Default.Storage,
-              contentDescription = null,
-              modifier = Modifier.size(16.dp)
-            )
-          },
-          colors = AssistChipDefaults.assistChipColors(
-            disabledContainerColor = engineStatusColor.copy(alpha = 0.12f),
-            disabledLabelColor = engineStatusColor,
-            disabledLeadingIconContentColor = engineStatusColor
-          ),
-          border = AssistChipDefaults.assistChipBorder(
-            enabled = false,
-            borderColor = engineStatusColor.copy(alpha = 0.28f),
-            disabledBorderColor = engineStatusColor.copy(alpha = 0.28f)
-          )
-        )
-      }
-    }
-
-    // Scrollable Transcription Feed or Empty State
-    Box(
+    CaptureHeader(activeEngine = activeEngine, recordingState = recordingState, timerText = timerText)
+    LiveTranscriptPanel(
+      liveSegments = liveSegments,
+      recordingState = recordingState,
       modifier = Modifier
         .weight(1f)
         .fillMaxWidth()
-        .padding(vertical = 24.dp),
-      contentAlignment = Alignment.Center
+    )
+    ControlDeck(
+      recordingState = recordingState,
+      timerText = timerText,
+      waveformAmplitudes = waveformAmplitudes,
+      isImporting = isImporting,
+      onImportClick = onImportClick,
+      onRecordToggle = onRecordToggle
+    )
+  }
+}
+
+@Composable
+private fun CaptureHeader(
+  activeEngine: TranscriberEngine,
+  recordingState: RecordingState,
+  timerText: String
+) {
+  val isReady = activeEngine.isModelDownloaded
+  val status = when {
+    recordingState == RecordingState.RECORDING -> "ARMED"
+    isReady -> "READY"
+    else -> "MODEL CHECK"
+  }
+  val statusColor = when {
+    recordingState == RecordingState.RECORDING -> RecordingRed
+    isReady -> SignalLime
+    else -> GoldenSun
+  }
+
+  Surface(
+    shape = RoundedCornerShape(28.dp),
+    color = PanelSurface.copy(alpha = 0.94f),
+    border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.7f)),
+    shadowElevation = 6.dp,
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Row(
+      modifier = Modifier.padding(18.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
     ) {
-      if (liveSegments.isEmpty() && recordingState == RecordingState.IDLE) {
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          modifier = Modifier.padding(24.dp)
-        ) {
-          Icon(
-            Icons.Default.Mic,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-            modifier = Modifier.size(64.dp)
+      Column(modifier = Modifier.weight(1f)) {
+        Text("CAPTURE SYSTEM", style = MaterialTheme.typography.labelSmall, color = AccentCyan)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+          text = activeEngine.displayName,
+          style = MaterialTheme.typography.titleLarge,
+          color = LightText,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+          text = if (recordingState == RecordingState.RECORDING) "Recording locally for $timerText" else "Private offline transcription, ready on device",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MutedText,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis
+        )
+      }
+      Spacer(modifier = Modifier.width(12.dp))
+      StatusPill(status = status, statusColor = statusColor, isReady = isReady)
+    }
+  }
+}
+
+@Composable
+private fun StatusPill(
+  status: String,
+  statusColor: Color,
+  isReady: Boolean
+) {
+  Row(
+    modifier = Modifier
+      .clip(RoundedCornerShape(999.dp))
+      .background(statusColor.copy(alpha = 0.14f))
+      .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+      .padding(horizontal = 12.dp, vertical = 9.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Icon(
+      imageVector = if (isReady) Icons.Default.CheckCircle else Icons.Default.Storage,
+      contentDescription = null,
+      tint = statusColor,
+      modifier = Modifier.size(17.dp)
+    )
+    Spacer(modifier = Modifier.width(7.dp))
+    Text(text = status, style = MaterialTheme.typography.labelSmall, color = statusColor)
+  }
+}
+
+@Composable
+private fun LiveTranscriptPanel(
+  liveSegments: List<TranscriptSegment>,
+  recordingState: RecordingState,
+  modifier: Modifier = Modifier
+) {
+  Surface(
+    shape = RoundedCornerShape(32.dp),
+    color = CardSurface.copy(alpha = 0.82f),
+    border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.62f)),
+    modifier = modifier
+  ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .background(
+          Brush.verticalGradient(
+            listOf(PanelSurfaceHigh.copy(alpha = 0.74f), CardSurface.copy(alpha = 0.92f))
           )
-          Spacer(modifier = Modifier.height(16.dp))
-          Text(
-            text = "Ready to Transcribe",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-          )
-          Spacer(modifier = Modifier.height(8.dp))
-          Text(
-            text = "Tap the microphone below to start live, offline speech recognition.",
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-          )
-        }
+        )
+        .padding(16.dp)
+    ) {
+      if (liveSegments.isEmpty()) {
+        EmptyCaptureState(recordingState = recordingState)
       } else {
         LazyColumn(
           modifier = Modifier.fillMaxSize(),
-          reverseLayout = true
+          reverseLayout = true,
+          verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          // Display newest transcription text at the bottom
-          val reversedList = liveSegments.reversed()
-          items(reversedList) { segment ->
-            Card(
-              shape = RoundedCornerShape(20.dp),
-              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)),
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp)
-                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
-            ) {
-              Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                  Text(
-                    text = segment.speaker ?: "Speaker 1",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AccentCyan
-                  )
-                  Text(
-                    text = "${segment.timestampMs / 1000}s",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                  )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                  text = segment.text,
-                  fontSize = 15.sp,
-                  fontFamily = FontFamily.Monospace,
-                  color = MaterialTheme.colorScheme.onSurface
-                )
-              }
-            }
+          items(liveSegments.reversed()) { segment ->
+            TranscriptBurst(segment = segment)
           }
         }
       }
     }
+  }
+}
 
-    // Dynamic Waveform and Recorder controls at bottom
+@Composable
+private fun EmptyCaptureState(recordingState: RecordingState) {
+  Column(
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(12.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center
+  ) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(132.dp)) {
+      Canvas(modifier = Modifier.matchParentSize()) {
+        drawCircle(DeepIndigo.copy(alpha = 0.3f), radius = size.minDimension * 0.48f)
+        drawCircle(AccentCyan.copy(alpha = 0.22f), radius = size.minDimension * 0.36f, style = Stroke(2.dp.toPx()))
+        drawCircle(RecordingRed.copy(alpha = 0.18f), radius = size.minDimension * 0.22f, style = Stroke(2.dp.toPx()))
+      }
+      Icon(
+        imageVector = if (recordingState == RecordingState.RECORDING) Icons.Default.GraphicEq else Icons.Default.Mic,
+        contentDescription = null,
+        tint = LightText,
+        modifier = Modifier.size(54.dp)
+      )
+    }
+    Spacer(modifier = Modifier.height(18.dp))
+    Text(
+      text = if (recordingState == RecordingState.RECORDING) "Listening for the first words" else "Ready to Transcribe",
+      style = MaterialTheme.typography.headlineMedium,
+      color = LightText,
+      textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    Text(
+      text = "Start a live capture or import a WAV file. Audio stays local while the transcript takes shape.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MutedText,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.fillMaxWidth(0.86f)
+    )
+  }
+}
+
+@Composable
+private fun TranscriptBurst(segment: TranscriptSegment) {
+  Surface(
+    shape = RoundedCornerShape(22.dp),
+    color = PanelSurface.copy(alpha = 0.9f),
+    border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.52f)),
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Row(
+      modifier = Modifier.padding(14.dp),
+      verticalAlignment = Alignment.Top
+    ) {
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+          text = formatTimestamp(segment.timestampMs),
+          style = MaterialTheme.typography.labelSmall,
+          color = AccentCyan
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+          modifier = Modifier
+            .width(2.dp)
+            .height(34.dp)
+            .background(Brush.verticalGradient(listOf(AccentCyan, Color.Transparent)))
+        )
+      }
+      Spacer(modifier = Modifier.width(13.dp))
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = segment.speaker ?: "Speaker 1",
+          style = MaterialTheme.typography.labelSmall,
+          color = GoldenSun
+        )
+        Spacer(modifier = Modifier.height(5.dp))
+        Text(
+          text = segment.text,
+          style = MaterialTheme.typography.bodyLarge,
+          fontFamily = FontFamily.Monospace,
+          color = LightText
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun ControlDeck(
+  recordingState: RecordingState,
+  timerText: String,
+  waveformAmplitudes: List<Float>,
+  isImporting: Boolean,
+  onImportClick: () -> Unit,
+  onRecordToggle: () -> Unit
+) {
+  val haptic = LocalHapticFeedback.current
+  val isRecording = recordingState == RecordingState.RECORDING
+
+  Surface(
+    shape = RoundedCornerShape(32.dp),
+    color = PanelSurfaceHigh.copy(alpha = 0.96f),
+    border = BorderStroke(1.dp, if (isRecording) RecordingRed.copy(alpha = 0.55f) else SignalStroke.copy(alpha = 0.72f)),
+    shadowElevation = 10.dp,
+    modifier = Modifier.fillMaxWidth()
+  ) {
     Column(
+      modifier = Modifier.padding(16.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
-      modifier = Modifier.fillMaxWidth()
+      verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
       AnimatedVisibility(
         visible = isImporting,
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically()
       ) {
-        Column(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp),
-          horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-          LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-          Spacer(modifier = Modifier.height(8.dp))
-          Text(
-            text = "Importing WAV audio...",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
+        Column(modifier = Modifier.fillMaxWidth()) {
+          LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth(),
+            color = AccentCyan,
+            trackColor = SignalStroke.copy(alpha = 0.35f)
           )
+          Spacer(modifier = Modifier.height(7.dp))
+          Text("Importing WAV audio", style = MaterialTheme.typography.labelSmall, color = AccentCyan)
         }
       }
 
-      AnimatedVisibility(
-        visible = recordingState == RecordingState.RECORDING,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically()
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-          val waveformColor = MaterialTheme.colorScheme.primary
-          Canvas(
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(56.dp)
-              .padding(horizontal = 16.dp)
-          ) {
-            val barWidth = 6.dp.toPx()
-            val gap = 4.dp.toPx()
-            val amplitudeList = waveformAmplitudes
-            val totalBars = (size.width / (barWidth + gap)).toInt()
-
-            val activeList = if (amplitudeList.size > totalBars) {
-              amplitudeList.takeLast(totalBars)
-            } else {
-              amplitudeList
-            }
-
-            val startX = (size.width - (activeList.size * (barWidth + gap))) / 2f
-
-            activeList.forEachIndexed { index, amp ->
-              val barHeight = size.height * amp
-              val x = startX + index * (barWidth + gap)
-              val y = (size.height - barHeight) / 2f
-              drawRoundRect(
-                brush = SolidColor(waveformColor),
-                topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f, barWidth / 2f)
-              )
-            }
-          }
-          Spacer(modifier = Modifier.height(12.dp))
+        Column {
+          Text("SIGNAL", style = MaterialTheme.typography.labelSmall, color = MutedText)
           Text(
-            text = timerText,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = RecordingRed
+            text = if (isRecording) timerText else "00:00",
+            style = MaterialTheme.typography.displaySmall,
+            color = if (isRecording) RecordingRed else LightText
           )
-          Spacer(modifier = Modifier.height(16.dp))
         }
+        SignalBadge(text = if (isRecording) "LIVE" else "STANDBY", color = if (isRecording) RecordingRed else SignalLime)
       }
 
-      OutlinedButton(
-        onClick = onImportClick,
-        enabled = recordingState == RecordingState.IDLE && !isImporting,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.padding(bottom = 12.dp)
-      ) {
-        Icon(
-          imageVector = Icons.Default.UploadFile,
-          contentDescription = null,
-          modifier = Modifier.size(18.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(if (isImporting) "Importing" else "Import WAV")
-      }
-
-      // Mic Pulse Animation
-      val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-      val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (recordingState == RecordingState.RECORDING) 1.25f else 1f,
-        animationSpec = infiniteRepeatable(
-          animation = twistyTween(1000),
-          repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
+      SignalWaveform(
+        amplitudes = waveformAmplitudes,
+        isRecording = isRecording,
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(72.dp)
       )
 
-      Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.size(96.dp)
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        if (recordingState == RecordingState.RECORDING) {
-          Box(
-            modifier = Modifier
-              .size(76.dp)
-              .scale(scale)
-              .background(RecordingRed.copy(alpha = 0.15f), CircleShape)
-          )
+        OutlinedButton(
+          onClick = onImportClick,
+          enabled = recordingState == RecordingState.IDLE && !isImporting,
+          shape = RoundedCornerShape(18.dp),
+          border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.42f)),
+          colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = AccentCyan,
+            disabledContentColor = MutedText.copy(alpha = 0.55f)
+          ),
+          modifier = Modifier.height(54.dp)
+        ) {
+          Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(19.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(if (isImporting) "Importing" else "Import WAV", fontWeight = FontWeight.Bold)
         }
 
-        Box(
-          modifier = Modifier
-            .size(64.dp)
-            .clip(CircleShape)
-            .background(
-              Brush.linearGradient(
-                colors = if (recordingState == RecordingState.RECORDING) {
-                  listOf(RecordingRed, RecordingRed.copy(alpha = 0.8f))
-                } else {
-                  listOf(DeepIndigo, DeepIndigo.copy(alpha = 0.8f))
-                }
-              )
-            )
-            .clickable(enabled = !isImporting) {
-              haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-              onRecordToggle()
-            },
-          contentAlignment = Alignment.Center
-        ) {
-          Icon(
-            imageVector = if (recordingState == RecordingState.RECORDING) Icons.Default.Stop else Icons.Default.Mic,
-            contentDescription = when {
-              isImporting -> "Import in progress"
-              recordingState == RecordingState.RECORDING -> "Stop recording"
-              else -> "Start recording"
-            },
-            tint = Color.White,
-            modifier = Modifier.size(32.dp)
-          )
-        }
+        RecordingHaloButton(
+          isRecording = isRecording,
+          enabled = !isImporting,
+          onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onRecordToggle()
+          }
+        )
       }
+    }
+  }
+}
+
+@Composable
+private fun SignalBadge(text: String, color: Color) {
+  Text(
+    text = text,
+    style = MaterialTheme.typography.labelSmall,
+    color = color,
+    modifier = Modifier
+      .clip(RoundedCornerShape(999.dp))
+      .background(color.copy(alpha = 0.13f))
+      .border(1.dp, color.copy(alpha = 0.42f), RoundedCornerShape(999.dp))
+      .padding(horizontal = 12.dp, vertical = 7.dp)
+  )
+}
+
+@Composable
+private fun SignalWaveform(
+  amplitudes: List<Float>,
+  isRecording: Boolean,
+  modifier: Modifier = Modifier
+) {
+  val idleBars = remember {
+    listOf(0.18f, 0.38f, 0.22f, 0.55f, 0.32f, 0.72f, 0.26f, 0.5f, 0.2f, 0.43f, 0.28f, 0.64f)
+  }
+
+  Canvas(modifier = modifier) {
+    val barWidth = 5.dp.toPx()
+    val gap = 5.dp.toPx()
+    val totalBars = (size.width / (barWidth + gap)).toInt().coerceAtLeast(1)
+    val source = if (amplitudes.isNotEmpty()) amplitudes else idleBars
+    val activeList = if (source.size > totalBars) source.takeLast(totalBars) else List(totalBars) { source[it % source.size] }
+    val startX = (size.width - (activeList.size * (barWidth + gap))) / 2f
+    val centerY = size.height / 2f
+
+    drawLine(
+      color = SignalStroke.copy(alpha = 0.7f),
+      start = Offset(0f, centerY),
+      end = Offset(size.width, centerY),
+      strokeWidth = 1.dp.toPx()
+    )
+
+    activeList.forEachIndexed { index, amp ->
+      val energy = amp.coerceIn(0.08f, 1f)
+      val barHeight = size.height * energy * if (isRecording) 0.96f else 0.52f
+      val x = startX + index * (barWidth + gap)
+      val y = (size.height - barHeight) / 2f
+      drawRoundRect(
+        brush = if (isRecording) Brush.verticalGradient(GradientRecording) else SolidColor(AccentCyan.copy(alpha = 0.76f)),
+        topLeft = Offset(x, y),
+        size = Size(barWidth, barHeight),
+        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+      )
+    }
+  }
+}
+
+@Composable
+private fun RecordingHaloButton(
+  isRecording: Boolean,
+  enabled: Boolean,
+  onClick: () -> Unit
+) {
+  val infiniteTransition = rememberInfiniteTransition(label = "record-pulse")
+  val scale by infiniteTransition.animateFloat(
+    initialValue = 0.92f,
+    targetValue = if (isRecording) 1.18f else 1f,
+    animationSpec = infiniteRepeatable(
+      animation = twistyTween(920),
+      repeatMode = RepeatMode.Reverse
+    ),
+    label = "record-scale"
+  )
+
+  Box(contentAlignment = Alignment.Center, modifier = Modifier.size(94.dp)) {
+    if (isRecording) {
+      Box(
+        modifier = Modifier
+          .size(74.dp)
+          .scale(scale)
+          .clip(CircleShape)
+          .background(RecordingRed.copy(alpha = 0.18f))
+      )
+    }
+    Box(
+      modifier = Modifier
+        .size(70.dp)
+        .clip(CircleShape)
+        .background(Brush.linearGradient(if (isRecording) GradientRecording else GradientPrimary))
+        .border(1.dp, LightText.copy(alpha = 0.24f), CircleShape)
+        .clickable(enabled = enabled, onClick = onClick),
+      contentAlignment = Alignment.Center
+    ) {
+      Icon(
+        imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+        contentDescription = if (isRecording) "Stop recording" else "Start recording",
+        tint = LightText,
+        modifier = Modifier.size(32.dp)
+      )
     }
   }
 }
@@ -613,133 +932,156 @@ fun HistoryTab(
   Column(
     modifier = Modifier
       .fillMaxSize()
-      .padding(24.dp)
+      .padding(horizontal = 18.dp, vertical = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
-    // Sleek search input
+    Column {
+      Text("ARCHIVE", style = MaterialTheme.typography.labelSmall, color = AccentCyan)
+      Text("Captured signals", style = MaterialTheme.typography.headlineMedium, color = LightText)
+      Text(
+        text = "Search, reopen, annotate, and export every saved transcript.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MutedText
+      )
+    }
+
     OutlinedTextField(
       value = searchQuery,
       onValueChange = onSearchQueryChange,
-      placeholder = { Text("Search sessions, notes or keywords...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)) },
-      leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary) },
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(bottom = 16.dp),
-      shape = RoundedCornerShape(12.dp),
+      placeholder = { Text("Search sessions, notes or keywords", color = MutedText.copy(alpha = 0.72f)) },
+      leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = AccentCyan) },
+      modifier = Modifier.fillMaxWidth(),
+      shape = RoundedCornerShape(20.dp),
       singleLine = true,
-      colors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = MaterialTheme.colorScheme.primary,
-        unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-        focusedContainerColor = Color.White.copy(alpha = 0.05f),
-        unfocusedContainerColor = Color.White.copy(alpha = 0.05f)
-      )
+      colors = signalTextFieldColors()
     )
 
     if (sessionsList.isEmpty()) {
       Box(
-        modifier = Modifier.weight(1f).fillMaxWidth(),
+        modifier = Modifier
+          .weight(1f)
+          .fillMaxWidth(),
         contentAlignment = Alignment.Center
       ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-          Icon(
-            Icons.Default.History,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-            modifier = Modifier.size(48.dp)
-          )
+          Icon(Icons.Default.History, contentDescription = null, tint = AccentCyan.copy(alpha = 0.48f), modifier = Modifier.size(54.dp))
           Spacer(modifier = Modifier.height(16.dp))
-          Text(
-            text = "No Sessions Found",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-          )
+          Text("No Sessions Found", style = MaterialTheme.typography.titleMedium, color = MutedText)
+          Spacer(modifier = Modifier.height(6.dp))
+          Text("Record or import audio to build the archive.", style = MaterialTheme.typography.bodyMedium, color = MutedText.copy(alpha = 0.72f))
         }
       }
     } else {
       LazyColumn(
-        modifier = Modifier.weight(1f).fillMaxWidth()
+        modifier = Modifier
+          .weight(1f)
+          .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
       ) {
-        items(sessionsList) { session ->
-          Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(vertical = 6.dp)
-              .clickable { onSessionClick(session) }
-          ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Text(
-                  text = session.title,
-                  fontSize = 16.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = MaterialTheme.colorScheme.onSurface,
-                  maxLines = 1,
-                  overflow = TextOverflow.Ellipsis,
-                  modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { onDeleteSession(session) }) {
-                  Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = RecordingRed.copy(alpha = 0.8f),
-                    modifier = Modifier.size(20.dp)
-                  )
-                }
-              }
-              Spacer(modifier = Modifier.height(8.dp))
-              Text(
-                text = session.rawText,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-              )
-              Spacer(modifier = Modifier.height(12.dp))
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                val formattedTime = remember(session.createdAt) {
-                  java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(session.createdAt)
-                }
-                Text(
-                  text = formattedTime,
-                  fontSize = 11.sp,
-                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                )
-                Row {
-                  Text(
-                    text = "${session.durationMs / 1000}s",
-                    fontSize = 11.sp,
-                    color = AccentCyan,
-                    modifier = Modifier
-                      .background(AccentCyan.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                      .padding(horizontal = 6.dp, vertical = 2.dp)
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Text(
-                    text = "${session.wordCount} words",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                      .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                      .padding(horizontal = 6.dp, vertical = 2.dp)
-                  )
-                }
-              }
-            }
-          }
+        itemsIndexed(sessionsList) { index, session ->
+          SessionArchiveRow(
+            index = index,
+            session = session,
+            onClick = { onSessionClick(session) },
+            onDelete = { onDeleteSession(session) }
+          )
         }
       }
     }
   }
+}
+
+@Composable
+private fun signalTextFieldColors() =
+  OutlinedTextFieldDefaults.colors(
+    focusedTextColor = LightText,
+    unfocusedTextColor = LightText,
+    focusedBorderColor = AccentCyan,
+    unfocusedBorderColor = SignalStroke.copy(alpha = 0.75f),
+    focusedContainerColor = PanelSurface.copy(alpha = 0.9f),
+    unfocusedContainerColor = PanelSurface.copy(alpha = 0.78f),
+    cursorColor = AccentCyan,
+    focusedPlaceholderColor = MutedText,
+    unfocusedPlaceholderColor = MutedText
+  )
+
+@Composable
+private fun SessionArchiveRow(
+  index: Int,
+  session: TranscriptionSession,
+  onClick: () -> Unit,
+  onDelete: () -> Unit
+) {
+  Surface(
+    shape = RoundedCornerShape(26.dp),
+    color = PanelSurface.copy(alpha = 0.94f),
+    border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.58f)),
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+  ) {
+    Row(
+      modifier = Modifier.padding(15.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Box(
+        modifier = Modifier
+          .size(52.dp)
+          .clip(RoundedCornerShape(18.dp))
+          .background(DeepIndigo.copy(alpha = 0.26f))
+          .border(1.dp, AccentCyan.copy(alpha = 0.25f), RoundedCornerShape(18.dp)),
+        contentAlignment = Alignment.Center
+      ) {
+        Text(
+          text = (index + 1).toString().padStart(2, '0'),
+          style = MaterialTheme.typography.labelLarge,
+          color = AccentCyan
+        )
+      }
+      Spacer(modifier = Modifier.width(14.dp))
+      Column(modifier = Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            text = session.title,
+            style = MaterialTheme.typography.titleMedium,
+            color = LightText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+          )
+          IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = RecordingRed.copy(alpha = 0.85f), modifier = Modifier.size(20.dp))
+          }
+        }
+        Text(
+          text = session.rawText.ifBlank { "No transcript text saved" },
+          style = MaterialTheme.typography.bodyMedium,
+          color = MutedText,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+          MetadataChip(text = formatSessionTime(session.createdAt), color = MutedText)
+          MetadataChip(text = formatDuration(session.durationMs), color = AccentCyan)
+          MetadataChip(text = "${session.wordCount} words", color = GoldenSun)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun MetadataChip(text: String, color: Color) {
+  Text(
+    text = text,
+    style = MaterialTheme.typography.labelSmall,
+    color = color,
+    modifier = Modifier
+      .clip(RoundedCornerShape(999.dp))
+      .background(color.copy(alpha = 0.1f))
+      .padding(horizontal = 8.dp, vertical = 4.dp)
+  )
 }
 
 @Composable
@@ -760,10 +1102,13 @@ fun SessionDetailsDialog(
     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
     modifier = Modifier
       .fillMaxWidth(0.95f)
-      .fillMaxHeight(0.85f),
+      .fillMaxHeight(0.86f),
+    containerColor = PanelSurfaceHigh,
+    titleContentColor = LightText,
+    textContentColor = LightText,
     confirmButton = {
       TextButton(onClick = onDismiss) {
-        Text("Close", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        Text("Close", color = AccentCyan, fontWeight = FontWeight.Bold)
       }
     },
     title = {
@@ -772,155 +1117,164 @@ fun SessionDetailsDialog(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(
-          text = session.title,
-          fontSize = 18.sp,
-          fontWeight = FontWeight.Bold,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+          Text("TRANSCRIPT", style = MaterialTheme.typography.labelSmall, color = AccentCyan)
+          Text(
+            text = session.title,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+          )
+        }
         IconButton(onClick = { isExporting = true }) {
-          Icon(Icons.Default.Share, contentDescription = "Export Options", tint = MaterialTheme.colorScheme.primary)
+          Icon(Icons.Default.Share, contentDescription = "Export Options", tint = GoldenSun)
         }
       }
     },
     text = {
-      Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-          text = "Full Transcript",
-          fontSize = 12.sp,
-          fontWeight = FontWeight.Bold,
-          color = AccentCyan,
-          modifier = Modifier.padding(bottom = 6.dp)
-        )
+      Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          MetadataChip(text = formatDuration(session.durationMs), color = AccentCyan)
+          MetadataChip(text = "${session.wordCount} words", color = GoldenSun)
+          MetadataChip(text = session.engineUsed, color = SignalLime)
+        }
 
-        // Read-only transcript feed or block
-        Card(
-          shape = RoundedCornerShape(12.dp),
-          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)),
+        Surface(
+          shape = RoundedCornerShape(24.dp),
+          color = CardSurface.copy(alpha = 0.72f),
+          border = BorderStroke(1.dp, SignalStroke.copy(alpha = 0.58f)),
           modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
-            .padding(bottom = 16.dp)
         ) {
           LazyColumn(
             modifier = Modifier
               .fillMaxSize()
-              .padding(12.dp)
+              .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
           ) {
             if (segments.isEmpty()) {
               item {
                 Text(
                   text = session.rawText,
-                  fontSize = 14.sp,
-                  lineHeight = 20.sp,
-                  color = MaterialTheme.colorScheme.onSurface
+                  style = MaterialTheme.typography.bodyLarge,
+                  lineHeight = 24.sp,
+                  color = LightText
                 )
               }
             } else {
               items(segments) { segment ->
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                  Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                  ) {
-                    Text(
-                      text = segment.speaker ?: "Speaker 1",
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = AccentCyan
-                    )
-                    Text(
-                      text = "${segment.timestampMs / 1000}s",
-                      fontSize = 10.sp,
-                      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    )
-                  }
-                  Text(
-                    text = segment.text,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 2.dp)
-                  )
-                }
+                TranscriptBurst(segment = segment)
               }
             }
           }
         }
 
-        // Editable Session Notes
-        Text(
-          text = "Session Notes (auto-saved)",
-          fontSize = 12.sp,
-          fontWeight = FontWeight.Bold,
-          color = AccentCyan,
-          modifier = Modifier.padding(bottom = 6.dp)
-        )
-        OutlinedTextField(
-          value = notes,
-          onValueChange = onNotesChange,
-          placeholder = { Text("Take notes, add summaries or action items...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)) },
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp),
-          shape = RoundedCornerShape(12.dp),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f),
-            focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Text("Session notes, auto-saved", style = MaterialTheme.typography.labelSmall, color = AccentCyan)
+          OutlinedTextField(
+            value = notes,
+            onValueChange = onNotesChange,
+            placeholder = { Text("Add summary, action items or cleanup notes", color = MutedText.copy(alpha = 0.72f)) },
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(112.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = signalTextFieldColors()
           )
-        )
+        }
       }
     }
   )
 
-  // Export choice overlay dialog
   if (isExporting) {
-    AlertDialog(
-      onDismissRequest = { isExporting = false },
-      confirmButton = {},
-      dismissButton = {
-        TextButton(onClick = { isExporting = false }) {
-          Text("Cancel", color = MaterialTheme.colorScheme.primary)
-        }
+    ExportDialog(
+      onDismiss = { isExporting = false },
+      onExportTxt = {
+        isExporting = false
+        onExportTxt()
       },
-      title = { Text("Export Transcription", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-      text = {
-        Column(modifier = Modifier.fillMaxWidth()) {
-          ListItem(
-            headlineContent = { Text("Plain Text (.txt)", fontWeight = FontWeight.SemiBold) },
-            leadingContent = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = AccentCyan) },
-            modifier = Modifier.clickable {
-              isExporting = false
-              onExportTxt()
-            }
-          )
-          HorizontalDivider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f))
-          ListItem(
-            headlineContent = { Text("Structured Data (.json)", fontWeight = FontWeight.SemiBold) },
-            leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            modifier = Modifier.clickable {
-              isExporting = false
-              onExportJson()
-            }
-          )
-          HorizontalDivider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f))
-          ListItem(
-            headlineContent = { Text("Subtitles (.srt)", fontWeight = FontWeight.SemiBold) },
-            leadingContent = { Icon(Icons.Default.Check, contentDescription = null, tint = RecordingRed) },
-            modifier = Modifier.clickable {
-              isExporting = false
-              onExportSrt()
-            }
-          )
-        }
+      onExportJson = {
+        isExporting = false
+        onExportJson()
+      },
+      onExportSrt = {
+        isExporting = false
+        onExportSrt()
       }
     )
   }
 }
+
+@Composable
+private fun ExportDialog(
+  onDismiss: () -> Unit,
+  onExportTxt: () -> Unit,
+  onExportJson: () -> Unit,
+  onExportSrt: () -> Unit
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = PanelSurfaceHigh,
+    titleContentColor = LightText,
+    textContentColor = LightText,
+    confirmButton = {},
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel", color = AccentCyan)
+      }
+    },
+    title = { Text("Export Transcription", style = MaterialTheme.typography.titleLarge) },
+    text = {
+      Column(modifier = Modifier.fillMaxWidth()) {
+        ExportListItem(
+          title = "Plain Text (.txt)",
+          icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = AccentCyan) },
+          onClick = onExportTxt
+        )
+        HorizontalDivider(color = SignalStroke.copy(alpha = 0.5f))
+        ExportListItem(
+          title = "Structured Data (.json)",
+          icon = { Icon(Icons.Default.Info, contentDescription = null, tint = GoldenSun) },
+          onClick = onExportJson
+        )
+        HorizontalDivider(color = SignalStroke.copy(alpha = 0.5f))
+        ExportListItem(
+          title = "Subtitles (.srt)",
+          icon = { Icon(Icons.Default.Check, contentDescription = null, tint = RecordingRed) },
+          onClick = onExportSrt
+        )
+      }
+    }
+  )
+}
+
+@Composable
+private fun ExportListItem(
+  title: String,
+  icon: @Composable () -> Unit,
+  onClick: () -> Unit
+) {
+  ListItem(
+    headlineContent = { Text(title, fontWeight = FontWeight.Bold, color = LightText) },
+    leadingContent = icon,
+    trailingContent = { Icon(Icons.Default.MoreVert, contentDescription = null, tint = MutedText) },
+    colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+    modifier = Modifier.clickable(onClick = onClick)
+  )
+}
+
+private fun formatTimestamp(timestampMs: Long): String {
+  val totalSeconds = timestampMs / 1000
+  val minutes = totalSeconds / 60
+  val seconds = totalSeconds % 60
+  return "%02d:%02d".format(minutes, seconds)
+}
+
+private fun formatDuration(durationMs: Long): String = formatTimestamp(durationMs)
+
+private fun formatSessionTime(createdAt: Long): String =
+  SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(createdAt))
 
 private fun shareText(context: Context, text: String, mimeType: String) {
   val intent = Intent(Intent.ACTION_SEND).apply {
