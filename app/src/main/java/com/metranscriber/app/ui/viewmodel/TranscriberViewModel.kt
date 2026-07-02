@@ -16,6 +16,7 @@ import com.metranscriber.app.engine.audio.AudioRecorder
 import com.metranscriber.app.engine.audio.AndroidAudioRecorder
 import com.metranscriber.app.engine.audio.WavAudioReader
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,7 +44,8 @@ enum class RecordingState {
 class TranscriberViewModel(
   private val repository: TranscriptionRepository,
   private val engineManager: EngineManager,
-  private val audioRecorder: AudioRecorder
+  private val audioRecorder: AudioRecorder,
+  private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
   
   private val _recordingState = MutableStateFlow(RecordingState.IDLE)
@@ -175,7 +177,7 @@ class TranscriberViewModel(
 
     viewModelScope.launch {
       try {
-        val decodedAudio = withContext(Dispatchers.Default) {
+        val decodedAudio = withContext(decodeDispatcher) {
           WavAudioReader.decode(wavBytes)
         }
         val engine = activeEngine.value

@@ -46,7 +46,7 @@ class TranscriberViewModelTest {
     repository = FakeTranscriptionRepository()
     val engineManager = EngineManager(listOf(FakeTranscriberEngine()))
     audioRecorder = FakeAudioRecorder()
-    viewModel = TranscriberViewModel(repository, engineManager, audioRecorder)
+    viewModel = TranscriberViewModel(repository, engineManager, audioRecorder, testDispatcher)
   }
 
   @After
@@ -89,7 +89,7 @@ class TranscriberViewModelTest {
   @Test
   fun startRecording_whenEngineInitializationFails_resetsStateAndReportsError() = runTest(testDispatcher) {
     val failingEngine = FailingEngine()
-    viewModel = TranscriberViewModel(repository, EngineManager(listOf(failingEngine)), audioRecorder)
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(failingEngine)), audioRecorder, testDispatcher)
 
     viewModel.startRecording()
     testScheduler.runCurrent()
@@ -116,7 +116,7 @@ class TranscriberViewModelTest {
 
   @Test
   fun stopRecording_waitsForFinalEngineSegmentBeforeSaving() = runTest(testDispatcher) {
-    viewModel = TranscriberViewModel(repository, EngineManager(listOf(FinalOnCompletionEngine())), audioRecorder)
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(FinalOnCompletionEngine())), audioRecorder, testDispatcher)
 
     viewModel.startRecording()
     testScheduler.advanceTimeBy(100)
@@ -130,7 +130,7 @@ class TranscriberViewModelTest {
 
   @Test
   fun stopRecording_whenNoSpeechDetected_reportsErrorAndDoesNotSaveSession() = runTest(testDispatcher) {
-    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder)
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder, testDispatcher)
 
     viewModel.startRecording()
     testScheduler.advanceTimeBy(100)
@@ -143,7 +143,7 @@ class TranscriberViewModelTest {
 
   @Test
   fun importWavFile_whenNoSpeechDetected_reportsErrorAndDoesNotSaveSession() = runTest(testDispatcher) {
-    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder)
+    viewModel = TranscriberViewModel(repository, EngineManager(listOf(SilentEngine())), audioRecorder, testDispatcher)
     val wav = WavAudioReaderTest.wavBytes(frames = ShortArray(1024) { 1000 })
 
     viewModel.importWavFile("silent.wav", wav)
@@ -158,7 +158,7 @@ class TranscriberViewModelTest {
     val delayedRepository = DelayedNotesRepository()
     val session = testSession(notes = "initial")
     delayedRepository.saveSession(session)
-    viewModel = TranscriberViewModel(delayedRepository, EngineManager(listOf(FakeTranscriberEngine())), audioRecorder)
+    viewModel = TranscriberViewModel(delayedRepository, EngineManager(listOf(FakeTranscriberEngine())), audioRecorder, testDispatcher)
     viewModel.selectSession(session)
 
     viewModel.updateNotes("first")
