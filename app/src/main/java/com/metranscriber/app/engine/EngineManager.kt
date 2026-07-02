@@ -8,7 +8,7 @@ class EngineManager(
   private val engines: List<TranscriberEngine>
 ) {
   private val _activeEngine = MutableStateFlow<TranscriberEngine>(
-    engines.firstOrNull { it.isAvailable && it.isModelDownloaded } ?: FakeTranscriberEngine()
+    engines.firstOrNull { it.isAvailable } ?: FakeTranscriberEngine()
   )
   val activeEngine: StateFlow<TranscriberEngine> = _activeEngine.asStateFlow()
 
@@ -18,7 +18,7 @@ class EngineManager(
 
   suspend fun switchEngine(engineId: String): Boolean {
     val engine = engines.firstOrNull { it.engineId == engineId } ?: return false
-    if (!engine.isAvailable || !engine.isModelDownloaded) return false
+    if (!engine.isAvailable) return false
 
     _activeEngine.value.release()
     engine.initialize()

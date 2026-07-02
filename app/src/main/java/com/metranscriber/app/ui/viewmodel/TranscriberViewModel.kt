@@ -14,15 +14,15 @@ import com.metranscriber.app.engine.TranscriberEngine
 import com.metranscriber.app.engine.VoskTranscriberEngine
 import com.metranscriber.app.engine.audio.AudioRecorder
 import com.metranscriber.app.engine.audio.AndroidAudioRecorder
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.math.abs
 
@@ -50,9 +50,11 @@ class TranscriberViewModel(
   private val _liveSegments = MutableStateFlow<List<TranscriptSegment>>(emptyList())
   val liveSegments: StateFlow<List<TranscriptSegment>> = _liveSegments.asStateFlow()
 
-  private val _allSessions = MutableStateFlow<List<TranscriptionSession>>(emptyList())
   private val _searchQuery = MutableStateFlow("")
   val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+  private val _recordingError = MutableStateFlow<String?>(null)
+  val recordingError: StateFlow<String?> = _recordingError.asStateFlow()
 
   val sessionsList: StateFlow<List<TranscriptionSession>> = combine(
     repository.getSessions(),
@@ -94,6 +96,7 @@ class TranscriberViewModel(
     if (_recordingState.value == RecordingState.RECORDING) return
     
     _recordingState.value = RecordingState.RECORDING
+    _recordingError.value = null
     _liveSegments.value = emptyList()
     _waveformAmplitudes.value = emptyList()
     startTimeMs = System.currentTimeMillis()
@@ -115,33 +118,17 @@ class TranscriberViewModel(
       try {
         engine.initialize()
         
-        val recordFlow = audioRecorder.recordStream()
-        
-        // Feed audio chunks to STT engine and update waveform
+        val recordFlow = audioRecorder.recordStream().onEach(::updateWaveform)
+
+        // Feed the same microphone stream to STT and waveform rendering.
         engine.transcribeStream(recordFlow).collect { segment ->
           _liveSegments.value = _liveSegments.value + segment
         }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
-        e.printStackTrace()
-      }
-    }
-
-    // Capture waveform visualizer data using another concurrent launch
-    viewModelScope.launch {
-      try {
-        audioRecorder.recordStream().collect { chunk ->
-          val avgAmplitude = chunk.map { abs(it.toInt()).toFloat() }.average().toFloat()
-          // Scale to fit visually
-          val scaled = (avgAmplitude / 32768f) * 1.5f
-          val currentList = _waveformAmplitudes.value.toMutableList()
-          if (currentList.size > 40) {
-            currentList.removeAt(0)
-          }
-          currentList.add(scaled.coerceIn(0.05f, 1f))
-          _waveformAmplitudes.value = currentList
-        }
-      } catch (e: Exception) {
-        // Silently catch audio resource errors
+        _recordingError.value = e.message ?: "Transcription failed"
+        resetRecordingUiState(cancelRecordingJob = false)
       }
     }
   }
@@ -186,6 +173,32 @@ class TranscriberViewModel(
       }
     }
     
+    _timerText.value = "00:00"
+    _waveformAmplitudes.value = emptyList()
+  }
+
+  fun clearRecordingError() {
+    _recordingError.value = null
+  }
+
+  private fun updateWaveform(chunk: ShortArray) {
+    if (chunk.isEmpty()) return
+    val avgAmplitude = chunk.map { abs(it.toInt()).toFloat() }.average().toFloat()
+    val scaled = (avgAmplitude / 32768f) * 1.5f
+    val currentList = _waveformAmplitudes.value.toMutableList()
+    if (currentList.size > 40) {
+      currentList.removeAt(0)
+    }
+    currentList.add(scaled.coerceIn(0.05f, 1f))
+    _waveformAmplitudes.value = currentList
+  }
+
+  private fun resetRecordingUiState(cancelRecordingJob: Boolean = true) {
+    _recordingState.value = RecordingState.IDLE
+    timerJob?.cancel()
+    if (cancelRecordingJob) {
+      recordingJob?.cancel()
+    }
     _timerText.value = "00:00"
     _waveformAmplitudes.value = emptyList()
   }

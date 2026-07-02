@@ -67,6 +67,7 @@ fun TranscriberScreen(
   val selectedSessionSegments by viewModel.selectedSessionSegments.collectAsStateWithLifecycle()
   val selectedSessionNotes by viewModel.selectedSessionNotes.collectAsStateWithLifecycle()
   val activeEngine by viewModel.activeEngine.collectAsStateWithLifecycle()
+  val recordingError by viewModel.recordingError.collectAsStateWithLifecycle()
 
   var currentTab by remember { mutableIntStateOf(0) }
   var hasMicPermission by remember {
@@ -86,6 +87,13 @@ fun TranscriberScreen(
       }
     }
   )
+
+  LaunchedEffect(recordingError) {
+    recordingError?.let { message ->
+      Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+      viewModel.clearRecordingError()
+    }
+  }
 
   Scaffold(
     modifier = modifier.fillMaxSize(),

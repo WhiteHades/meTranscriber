@@ -6,14 +6,21 @@ import kotlinx.coroutines.flow.flow
 
 class FakeAudioRecorder : AudioRecorder {
     private var isRecording = false
+    var recordStreamCalls = 0
+        private set
 
     override fun recordStream(): Flow<ShortArray> = flow {
+        recordStreamCalls++
         isRecording = true
-        // Emit some dummy audio chunks
-        repeat(10) {
-            if (!isRecording) return@flow
-            emit(ShortArray(1024) { 1000 }) // Constant amplitude
-            delay(100)
+        try {
+            // Emit some dummy audio chunks
+            repeat(10) {
+                if (!isRecording) return@flow
+                emit(ShortArray(1024) { 1000 }) // Constant amplitude
+                delay(100)
+            }
+        } finally {
+            isRecording = false
         }
     }
 
