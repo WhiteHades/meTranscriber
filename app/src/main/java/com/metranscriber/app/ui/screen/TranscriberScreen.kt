@@ -90,9 +90,7 @@ fun TranscriberScreen(
 
   var currentTab by rememberSaveable { mutableIntStateOf(0) }
   var hasMicPermission by remember {
-    mutableStateOf(
-      ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    )
+    mutableStateOf(context.hasRecordAudioPermission())
   }
 
   val permissionLauncher = rememberLauncherForActivityResult(
@@ -218,6 +216,7 @@ fun TranscriberScreen(
           onRecordToggle = {
             if (!isImporting) {
               if (recordingState == RecordingState.IDLE) {
+                hasMicPermission = context.hasRecordAudioPermission()
                 if (hasMicPermission) {
                   viewModel.startRecording()
                 } else {
@@ -267,6 +266,9 @@ fun TranscriberScreen(
 
 private fun Context.readSelectedAudioBytes(uri: Uri): ByteArray? =
   contentResolver.openInputStream(uri)?.use { it.readBytesWithLimit(MAX_WAV_IMPORT_BYTES) }
+
+private fun Context.hasRecordAudioPermission(): Boolean =
+  ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
 private fun InputStream.readBytesWithLimit(maxBytes: Int): ByteArray {
   val output = ByteArrayOutputStream()
